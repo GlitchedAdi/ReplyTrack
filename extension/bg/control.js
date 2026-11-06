@@ -16,6 +16,7 @@ const Control = (() => {
 		if (run.active) await Outreach.stopRun();
 		await ReplySync.pause();
 		await Admin.pause();
+		await ScraperGuard.stop("Stopped — “Pause everything” was pressed in ReplyTrack.");
 		orLog("info", "Paused everything (dashboard).");
 		rsLog("info", "Paused everything (dashboard).");
 		return { ok: true };

@@ -5,7 +5,6 @@ The technical side of ReplyTrack: how it's built, what it stores, the rules the 
 ## Contents
 
 - [For the team lead: set up once](#for-the-team-lead-set-up-once)
-- [Own script (instead of the team web app)](#own-script-instead-of-the-team-web-app)
 - [Helping team members (setup problems)](#helping-team-members-setup-problems)
 - [Updating the extension on a member's computer](#updating-the-extension-on-a-members-computer)
 - [Files](#files)
@@ -77,68 +76,6 @@ When **Code.gs** changes: paste the new code into the project (steps 3–5), the
 
 ---
 
-## Own script (instead of the team web app)
-
-The other way to connect: put Code.gs **inside your sheet** and deploy it yourself. Use this for a sheet that's synced to a main sheet, or if your team lead asks you to. It needs a **secret key**.
-
-### Set up the script (once)
-
-1. Open your Google Sheet and click **Extensions → Apps Script**. A new tab opens with a code editor.
-   If Google says *"Sorry, unable to open the file at this time"*, see [below](#google-says-sorry-unable-to-open-the-file-at-this-time).
-2. Click inside the code, press **Ctrl+A** (Mac: **Cmd+A**), then **Delete**.
-3. On the ReplyTrack page on GitHub, open **apps-script → Code.gs**, click **Copy raw file**, and paste it into the editor.
-4. Make up your **secret key**: 16 or more letters, numbers and dashes — for example from a password generator. Write it down somewhere safe. (It's like a password for your sheet: ReplyTrack sends it with every request, and your sheet ignores any request without it. Don't share it.)
-5. Near the top of the code, find `var SECRET_KEY = 'CHANGE-ME';` and replace **CHANGE-ME** with your key. Keep the quote marks.
-6. Click **Save project** (💾).
-7. In the list next to **Debug**, choose **testSetup** and click **▶ Run**. Google asks for permission: **Review permissions** → your account → **Advanced** → **Go to … (unsafe)** → **Allow** (tick all boxes first, if there are any).
-8. The **Execution log** should say **Secret key: set**, and the **MY LEADS** line should list your rows and columns. If it says **missing column**, fix that column name in row 1 and run **testSetup** again.
-9. Click **Deploy → New deployment** → ⚙️ → **Web app**. Set **Execute as: Me** and **Who has access: Anyone**. (If **Anyone** isn't in the list, choose **Anyone within** your company, and tick **Send my Google login with each request** in Settings later.)
-10. Click **Deploy** (allow again if asked), then copy the **Web app** URL that ends in **/exec**.
-
-### Connect
-
-1. In ReplyTrack, open **Settings** and click **Advanced**.
-2. Tick **Use my sheet's own script instead**.
-3. Paste the **/exec** URL into **Your script's web app URL** and your key into **Secret key**. Check **Tab name**.
-4. Click **Save**. The message should be green and start with **Connected**.
-
-(If you set ReplyTrack up before version 2.2, this is already how you're connected — nothing to change.)
-
-### Updating your own script
-
-Only when the update notes say **Code.gs changed**:
-
-1. Open your sheet → **Extensions → Apps Script**.
-2. Replace all the code with the new Code.gs, and put your secret key back into the `SECRET_KEY` line — the same key as before.
-3. Click **Save project** (💾). Run **testSetup** once; if Google asks for a new permission, allow it.
-4. Click **Deploy → Manage deployments** → ✏️ → **Version: New version** → **Deploy**.
-   <!-- TODO screenshot (docs/images/TODO-manage-deployments-new-version.png): "Manage deployments" with the pencil clicked and "Version: New version" selected -->
-
-The web app address stays the same, so you don't need to change anything in Settings.
-
-### Problems with your own script
-
-| The message says | What to do |
-|---|---|
-| The secret key doesn't match SECRET_KEY in your Code.gs | Use the same key in Settings and in Code.gs. If you changed it in Code.gs, deploy a new version ([Updating your own script](#updating-your-own-script), step 4). |
-| Your Code.gs isn't ready: set SECRET_KEY in Code.gs | You didn't replace **CHANGE-ME** yet (step 5), or didn't deploy after saving. |
-| … SECRET_KEY in Code.gs is too short | Use a key with 16 or more characters. |
-| Apps Script returned a web page instead of an answer | In the deployment, **Who has access** must be **Anyone**, and the address must end in **/exec**. |
-| That's a test (/dev) URL | Use the address from **Deploy** that ends in **/exec**. |
-| unexpected answer … is the NEW Code.gs deployed? | Your sheet still has an old script. Paste the new Code.gs and deploy a new version. |
-
-#### Google says "Sorry, unable to open the file at this time"
-
-This happens when Chrome is signed in to several Google accounts at once.
-
-1. Open an Incognito window: press **Ctrl+Shift+N** (Mac: **Cmd+Shift+N**).
-2. Go to **sheets.google.com** and sign in with only the Google account that owns your sheet.
-3. Open your sheet, then click **Extensions → Apps Script** and continue.
-
-You only need Incognito for setting up the script. Use ReplyTrack in your normal Chrome window.
-
----
-
 ## Helping team members (setup problems)
 
 ### Wrong Google account
@@ -201,14 +138,15 @@ replytrack/
 ├── DEVELOPER.md           ← this file
 ├── docs/images/           ← README screenshots (made with sample data only)
 ├── apps-script/
-│   └── Code.gs            ← the team web app (its own project, deployed once) — or a member's own script inside their sheet
+│   └── Code.gs            ← the team web app (its own project, deployed once)
 └── extension/             ← the Chrome extension (Manifest V3; load this folder)
     ├── manifest.json
     ├── team-config.js     ← the team web app URL and the template's /copy link (filled in by the team lead)
+    ├── scraper/           ← the SalesNav Scraper (v5.2), built in: Sales Nav search, contact info, deep profiles (scraper/README.md)
     ├── background.js      ← the one service worker: importScripts() the parts in bg/, one message router
     ├── bg/
     │   ├── common.js      ← helpers, the [Outreach] / [ReplySync] logs, recent activity
-    │   ├── sheet.js       ← the member's sheet: Code.gs calls (team web app or own script), write outbox
+    │   ├── sheet.js       ← the member's sheet: Code.gs calls (the team web app), write outbox
     │   ├── lock.js        ← one thing at a time on LinkedIn
     │   ├── linkedin.js    ← the minimized worker window/tab where outreach.js runs
     │   ├── outreach.js    ← connection requests from the sheet's rows
@@ -218,19 +156,30 @@ replytrack/
     │   └── control.js     ← Pause everything / Start again
     ├── outreach.js        ← injected ONLY into the worker tab: Voyager API calls (profile, invite, message, connections)
     ├── content.js         ← content script on linkedin.com/messaging/*: reads conversations (CONFIG selectors at the top)
-    ├── shared.js          ← sheet column names (required / optional), the connection settings, placeholders and the note, defaults, CSV helpers
+    ├── shared.js          ← sheet column names (required / optional), the connection settings, placeholders and the note, defaults
     ├── dashboard.html / dashboard.css   ← the dashboard (the toolbar icon opens it as a tab)
-    ├── dash/              ← the dashboard's scripts: theme, core, overview, outreach, replies, tosend, settings
+    ├── dash/              ← the dashboard's scripts: core, overview, outreach, replies, tosend, settings
     ├── fonts/             ← Montserrat + JetBrains Mono (woff2) and their SIL Open Font License files
     └── icons/             ← 16 / 32 / 48 / 128 px
 ```
+
+
+**The built-in scraper** (`extension/scraper/`, the former SalesNav Scraper v5.2 — usage in `scraper/README.md`):
+- Its service worker is loaded by `background.js` with `importScripts("scraper/background.js")`, wrapped in its own function so its names can't clash with ReplyTrack's. Its paths carry the `scraper/` prefix (importScripts, injected files).
+- The toolbar icon opens `scraper/popup.html` on `linkedin.com/sales/*` and `linkedin.com/in/*` tabs (`chrome.action.setPopup` per tab); anywhere else it opens the dashboard. The popup has a link back to the dashboard; the dashboard's **Scraper** tab shows its progress and the SCRAP tab's state.
+- It keeps its own storage keys (`scrapedLeads`, `scrapingConfig`, `enrichState`, `p:*`, `cf:*`, …), its own minimized worker window (`storage.session.workerWindowId`) and its own pace.
+- **Same LinkedIn rules as ReplyTrack** (`bg/scraperguard.js`): while a search or the profile step runs (`scrapingConfig.active` / `enrichState.active`) it holds the lock as `scraper` — outreach, the accepted check, Admin Replies and reply syncs wait. Started while outreach or an Admin Reply holds the lock, or while paused, it's stopped at once (its Stop path: `active: false`, `STOP_SCRAPING` to Sales Nav tabs) with a line in its log. “Pause everything” stops it.
+- **One daily LinkedIn limit** (Outreach page → Pace & limits, `orSettings.dailyCap`, default 1,000): connection requests (`orCounts`) + scraped profiles (`dailyProfileCount`) together. Outreach stops when both reach it; the scraper's profile step gets `limit − requests today` as its cap (`sharedDailyCap`). The popup has no limit field of its own.
+- **SCRAP marks people you already have:** `inMyLeads` (Code.gs checks `linkedInProfileUrl` / `defaultProfileUrl` / `profileUrl` against MY LEADS' LinkedIn Profile column) and `requestSent` (the extension checks ReplyTrack's sent history `h:<key>` against the lead's id and /in/ links). Code.gs reads SCRAP once and writes changed rows in blocks (rows with a formula cell by cell).
+- Extra manifest needs: `activeTab`, and its content scripts on `/sales/*` and the rest of linkedin.com.
+- **Its leads go to the member's sheet, tab SCRAP** (`bg/scrapesync.js` → Code.gs `saveScraped`): a few seconds after the scraper saves leads (`scrapedLeads`) or a profile (`p:<key>`), changed rows go through the Sheet outbox in batches of 100; also every 15 minutes (`rt-tick`). Columns: `key` (the scraper's lead key), the Deep Run export columns, then the Standard Run ones Deep Run lacks. Code.gs creates SCRAP if missing, adds new columns to its header, upserts by `key`, writes only non-empty values (never clears, never over a formula) as plain text. What was sent is kept in `scSent` (hash per key); a batch the sheet refuses is forgotten there, so it's sent again.
 
 ---
 
 ## How it fits together
 
 - **One service worker** (`background.js`) loads `shared.js` and `bg/*.js` with `importScripts()`. Each `bg/` file is one module (`const Sheet = (() => { … })()` and so on), so names don't collide in the shared global scope. One `chrome.runtime.onMessage` listener routes every message; types it doesn't know get no answer (they're meant for a tab).
-- **The member's sheet** is reached only through Code.gs (`bg/sheet.js`): the team web app (default) or the member's own script (see [The sheet and Code.gs](#the-sheet-and-codegs)). Reads are immediate. Writes go through an **outbox** in `storage.local` and are retried every minute, in order, until they go through. Only sheet writes are ever retried — never anything on LinkedIn.
+- **The member's sheet** is reached only through the team web app's Code.gs (`bg/sheet.js`, see [The sheet and Code.gs](#the-sheet-and-codegs)). Reads are immediate. Writes go through an **outbox** in `storage.local` and are retried every minute, in order, until they go through. Only sheet writes are ever retried — never anything on LinkedIn.
 - **The lock** (`bg/lock.js`, kept in `storage.session`) makes sure only one of these touches LinkedIn at a time: `outreach` (a run or dry run, for the whole run), `replysync`, `accepted`, `admin` (sending one message) and `adminCheck` (connection look-ups for the To send list). An Admin Reply waiting goes first; otherwise first come, first served. A holder that stops beating for 3 minutes loses it. When the lock is released, a reply sync or accepted check that had to wait runs.
 - **The worker tab** (`bg/linkedin.js`): one minimized window with an about:blank tab and a LinkedIn tab. `outreach.js` is injected there (isolated world) and calls LinkedIn's Voyager API with same-origin `fetch()` — the user's cookies and CSRF token. LinkedIn's own `x-li-*` headers are read from the tab's requests with `chrome.webRequest`. Calls are never retried for `OR_INVITE` and `OR_MESSAGE` (they may have gone through).
 - **The pinned messaging tab** (`bg/replysync.js` + `content.js`): reloaded every 20 minutes (and 30 s after the computer wakes up); each load makes `content.js` ask `shouldSync`, take the lock, and walk the newest conversations.
@@ -255,28 +204,24 @@ Each team member has their **own Google Sheet file** — a copy of the team temp
 
 Columns are never added. `ping` and `read` return `missing` (the optional columns not found); the extension also works it out from the header (`S.missingColumns`) to show “Off — …” on the affected cards.
 
-### Two set-ups — decided by where Code.gs lives
+### The team web app
 
-| | Team web app (default) | Own script |
-|---|---|---|
-| Where | its own Apps Script project (script.google.com → New project) | inside the member's sheet (Extensions → Apps Script) |
-| Deployed | once, by the team lead: **Execute as: User accessing the web app**, **Anyone with Google account** | by the sheet's owner: **Execute as: Me**, **Anyone** |
-| Which sheet | `SpreadsheetApp.openById(<sheet>)` — the id the extension sends | `getActiveSpreadsheet()` — only the sheet it's in; any `sheet` in the request is ignored |
-| Who it runs as | the member sending the request (their Google login: the extension uses `credentials: "include"`) | the owner |
-| Access check | `Session.getEffectiveUser()` must equal `Session.getActiveUser()` — otherwise (deployed “Execute as: Me”) every request is refused with `not running as you …` | `SECRET_KEY` (16+ characters, not `CHANGE-ME`) |
-| Write lock | `LockService.getUserLock()` (per member) | `LockService.getScriptLock()` |
-| `doGet` | the “You're connected” page (HtmlService), showing the account | “ok — ReplyTrack web app is running” |
-| Answers | include `account` (the Google account it ran as) | — |
+- **Where:** its own Apps Script project (script.google.com → New project), deployed once by the team lead: **Execute as: User accessing the web app**, **Anyone with Google account**.
+- **Which sheet:** `SpreadsheetApp.openById(<sheet>)` — the id the extension sends.
+- **Who it runs as:** the member sending the request (their Google login: the extension uses `credentials: "include"`).
+- **Access check:** `Session.getEffectiveUser()` must equal `Session.getActiveUser()` — otherwise (deployed “Execute as: Me”) every request is refused with `not running as you …`.
+- **Write lock:** `LockService.getUserLock()` (per member).
+- **`doGet`:** the “You're connected” page (HtmlService), showing the account. **Answers** include `account` (the Google account it ran as).
 
-`SpreadsheetApp.getActiveSpreadsheet()` returns `null` in a standalone project — that's how Code.gs tells the two apart.
+(The “own script” set-up — Code.gs inside one sheet with a secret key — was removed in 2.3. A copy of Code.gs pasted into a sheet still works only as the team web app: it ignores the sheet it's in.)
 
-**No key in the team web app**, on purpose: each request runs as the caller, so it can only reach sheets the caller can already edit — a key would add nothing against them, and a team-wide key would sit in every member's extension anyway. A cross-site page could at most try to trigger a write (the browser keeps it from reading the answer), and only if it knew the member's sheet id; the possible writes are the narrow ones below. The sheet id travels in the POST body, never in the URL.
+**No key**, on purpose: each request runs as the caller, so it can only reach sheets the caller can already edit — a key would add nothing against them, and a team-wide key would sit in every member's extension anyway. A cross-site page could at most try to trigger a write (the browser keeps it from reading the answer), and only if it knew the member's sheet id; the possible writes are the narrow ones below. The sheet id travels in the POST body, never in the URL.
 
-**Scopes:** `spreadsheets` (needed for `openById`; Google's screen says “all your spreadsheets”) and `userinfo.email` (for `Session…getEmail()`). An own script that's updated to this Code.gs asks for the email permission once.
+**Scopes:** `spreadsheets` (needed for `openById`; Google's screen says “all your spreadsheets”) and `userinfo.email` (for `Session…getEmail()`).
 
 ### Code.gs actions
 
-Every request is a POST with a JSON body — team web app: `{ "sheet": "<spreadsheet id>", "tab": "MY LEADS", "action": "…", … }`; own script: `{ "key": "<SECRET_KEY>", "tab": "MY LEADS", "action": "…", … }`. A request that fails the access check is rejected before anything is read.
+Every request is a POST with a JSON body: `{ "sheet": "<spreadsheet id>", "tab": "MY LEADS", "action": "…", … }`. A request that fails the access check is rejected before anything is read.
 
 | Action | Does |
 |---|---|
@@ -287,18 +232,17 @@ Every request is a POST with a JSON body — team web app: `{ "sheet": "<spreads
 | `addReplies { profileUrl, replies, sentAt }` | their messages into Response / Notes; Sent → Replied (no Response / Notes column → only Sent → Replied, `statusOnly: true`) |
 | `clearAdmin { profileUrl, row, adminText, notesText }` | after a verified Admin Reply: clears Admin Reply and Response / Notes in that row (contents only; no Response / Notes column → Admin Reply only) |
 
-Answers are JSON: `{ ok: true, … }` or `{ ok: false, error }` with errors such as `wrong key`, `set SECRET_KEY in Code.gs`, `tab not found`, `missing column: <name>` (required columns only), `profile not in tab`, `cell full`, `admin reply changed — not cleared`, `no "Admin Reply" column`, `bad request`, `busy, try again`, `error: …`; team web app only: `no sheet link`, `no access to sheet` (`openById` failed — wrong link or wrong account), `no edit access to sheet: …` (a write failed with a permission error), `not running as you — …`.
+Answers are JSON: `{ ok: true, … }` or `{ ok: false, error }` with errors such as `tab not found`, `missing column: <name>` (required columns only), `profile not in tab`, `cell full`, `admin reply changed — not cleared`, `no "Admin Reply" column`, `bad request`, `busy, try again`, `error: …`, `no sheet link`, `no sheets permission — …`, `no access to sheet` (`openById` failed — wrong link or wrong account), `no edit access to sheet: …` (a write failed with a permission error), `not running as you — …`.
 
-### The template, the copy button and testSetup()
+### The template and the copy button
 
 - The template is a sheet the team lead made by hand (MY LEADS tab, the columns, the Outreach Status dropdown, no leads), shared as *Anyone with the link → Viewer*. Its `/copy` link is in `TEMPLATE_COPY_URL` (Code.gs — the **Make a copy of the sheet** button on the “You're connected” page) and in `team-config.js` (`templateCopyUrl` — the link in Settings).
 - The Outreach Status dropdown is looked for in row 2 even when the tab has no rows yet, so an empty copy passes Test connection.
 - The extension treats a row whose only content is an empty / Not Started status as empty (not a lead, no “no link” warning).
-- `testSetup()` — read-only, for an own script: the key status, the time zone and, per tab, the rows, the missing optional columns, the dropdown and any problems. In the team project it only says there's nothing to test there.
 
 ### The extension side (bg/sheet.js)
 
-`S.connection(storage.sync)` → `{ mode, tabName, sheetId, url, secretKey, googleLogin }`. `mode` is `"team"` or `"own"`; settings saved before 2.2 (no `mode`, but a URL and a key) are `"own"`, so existing members keep their own script with no change. The team web app URL is `teamUrl` (Settings → Advanced) or else `RT_TEAM.webAppUrl` from `team-config.js`. An empty tab name means `MY LEADS`.
+`S.connection(storage.sync)` → `{ tabName, sheetUrl, sheetId, url }`. The team web app URL is `teamUrl` (Settings → Advanced) or else `RT_TEAM.webAppUrl` from `team-config.js`. An empty tab name means `MY LEADS`.
 
 Google's answers are turned into a `code` (kept in `rtSheetError` for the banner; Settings → Test connection explains each in full):
 
@@ -334,9 +278,9 @@ Google's answers are turned into a `code` (kept in `rtSheetError` for the banner
   - LinkedIn shows a request already pending → Sent Date left empty.
 - Already a 1st-degree connection → no request possible; the person is recorded in `adConnected` and listed in **To send → Already connected** (see below).
 - Other skipped rows and failed rows keep their status; the reason shows in the extension only. A row skipped because of its note waits again as soon as the row (or the typed note) changes.
-- Pace (defaults, Settings → Outreach): wait 4–10 s on each profile, 5–10 s before the next, 3–6 s after a skipped row, a 1–3 minute break about every 25 requests, auto-stop at 500 a day (Continue sends another day's worth). The first 3 requests of a run and ~1 in 20 after are checked on LinkedIn (the profile must show the request as pending, else the run stops). Unclear answers are counted and re-checked on Continue. Automatic stops: signed out, “too many requests” (429/999), LinkedIn's invitation limit, note refused, 5 errors in a row.
+- Pace (defaults, Outreach page → Pace & limits): wait 4–10 s on each profile, 5–10 s before the next, 3–6 s after a skipped row, a 1–3 minute break about every 25 requests, auto-stop at 500 a day (Continue sends another day's worth). The first 3 requests of a run and ~1 in 20 after are checked on LinkedIn (the profile must show the request as pending, else the run stops). Unclear answers are counted and re-checked on Continue. Automatic stops: signed out, “too many requests” (429/999), LinkedIn's invitation limit, note refused, 5 errors in a row.
 - **Dry run** looks every waiting row up and says what would happen — sends nothing, writes nothing.
-- Everyone this extension sent a request to is remembered **forever** (`h:<key>`); **Import sent history** adds the old extension's history (a missing date = “sent, date unknown”).
+- Everyone this extension sent a request to is remembered **forever** (`h:<key>`); older entries without a date mean “sent, date unknown”.
 - Placeholders: `{Name}`, `{Company Name}` — any column — plus `{firstName}`, `{lastName}`, `{fullName}`, `{headline}` from the profile. Keys match ignoring case, spaces and punctuation. A placeholder with nothing to fill it, or a note over 300 characters, skips the row.
 - **Self-repair:** when the user sends a connection request **with a note** by hand in any LinkedIn tab, the page's own request is learned (via `chrome.webRequest`) and tried first (`orTplInvite`); after 3 failures the built-in one is used again.
 
@@ -378,25 +322,25 @@ Twice a day — around 10 AM and 4 PM local time, or the next time Chrome is ope
 ## The dashboard
 
 - The toolbar icon opens `dashboard.html` as a tab, or switches to it if it's open (`chrome.runtime.getContexts`). `#overview`, `#outreach`, `#replies`, `#tosend`, `#settings` select the tab (the sections' ids are `page-…` so the hash doesn't scroll the page). `options_ui` also points at it.
-- `dash/core.js` holds the shared state (`chrome.storage` snapshot), top bar, banner, tabs and theme; each section registers `onRender()` (every storage change and once a second) and `onChange()` (heavy work only when its data changes).
+- `dash/core.js` holds the shared state (`chrome.storage` snapshot), top bar, banner and tabs; each section registers `onRender()` (every storage change and once a second) and `onChange()` (heavy work only when its data changes).
 - **Status pill:** green **Active** (automatic reply syncing on, outreach not stopped part-way), amber **Partly paused** (reply sync stopped, or an outreach run stopped with rows still waiting), grey **Paused** (only after Pause everything), grey **Not set up** (no settings yet).
 - **Banner** (only when action is needed): Not set up yet · LinkedIn logged out — sign in again · Daily invite limit reached — press Continue tomorrow · Can't reach your sheet — check settings (or, by `rtSheetError.code`: Sign in to Google · Google needs your OK · Wrong Google account · The team web app isn't set up right).
 - **Badge:** the number of To send items (`Admin.rebuild()`).
-- Settings → Connection: **Your sheet link**, **Tab name** (MY LEADS by default), **Connect Google account** (opens the team web app in a tab; sets `rtConnectAt`), and **Advanced**: the team web app URL (built in; “Reset to default”) and **Use my sheet's own script instead** (URL, secret key, Google login box). Only the chosen set-up's fields show (`#connCard.own`). The fields save with **Save** (which also tests); unsaved changes show a bottom bar with Save / Discard. Outreach settings save as you type.
+- Settings → Connection: **Your sheet link**, **Tab name** (MY LEADS by default), **Connect Google account** (opens the team web app in a tab; sets `rtConnectAt`), and **Advanced**: the team web app URL (built in; “Reset to default”). The fields save with **Save** (which also tests); unsaved changes show a bottom bar with Save / Discard. The note and the pace are on the Outreach page (Message / Pace & limits cards) and save as you type.
 - Missing optional columns: the Who accepted card says “Off — …” (Check now disabled), To send says “Admin replies are off”, Replies explains that reply text isn't saved — from the last header read (`adRows` / `orSheet`).
-- Theme: dark by default; the choice is kept in the page's `localStorage` (`rtTheme`). Fonts are bundled (SIL OFL 1.1, licence files in `fonts/`); nothing is loaded from the internet.
+- Dark theme only. Fonts are bundled (SIL OFL 1.1, licence files in `fonts/`); nothing is loaded from the internet.
 
 ---
 
 ## Messages, alarms and storage
 
-**Messages to the service worker:** `OR_START`, `OR_STOP`, `OR_LOAD`, `OR_COUNTS`, `OR_IMPORT`, `AC_CHECK`, `AD_REFRESH`, `AD_SEND`, `AD_CANCEL`, `AD_SKIP`, `AD_BY_HAND`, `AD_UNCLEAR`, `RT_PAUSE`, `RT_RESUME`, and from the reply sync / settings: `sleep`, `shouldSync`, `syncStarted`, `syncProgress`, `syncFinished`, `resolveProfile`, `cacheVanity`, `postConversation`, `loggedOut`, `syncNow`, `testConnection`, `resetHistory`, `settingsSaved`, `stopSync`, `startSync`.
+**Messages to the service worker:** `OR_START`, `OR_STOP`, `OR_LOAD`, `OR_COUNTS`, `AC_CHECK`, `AD_REFRESH`, `AD_SEND`, `AD_CANCEL`, `AD_SKIP`, `AD_BY_HAND`, `AD_UNCLEAR`, `RT_PAUSE`, `RT_RESUME`, and from the reply sync / settings: `sleep`, `shouldSync`, `syncStarted`, `syncProgress`, `syncFinished`, `resolveProfile`, `cacheVanity`, `postConversation`, `loggedOut`, `syncNow`, `testConnection`, `resetHistory`, `settingsSaved`, `stopSync`, `startSync`.
 
 **Messages to tabs:** worker tab (`outreach.js`): `OR_PING`, `OR_ME`, `OR_PROFILE`, `OR_INVITE`, `OR_VERIFY`, `OR_CONNECTIONS`, `OR_FIND_THREAD`, `OR_MESSAGE`. Messaging pages (`content.js`): `RT_PING`, `RT_READ_THREAD`, `stopSync`.
 
 **Alarms:** `replysync-reload` (20 min), `replysync-wake`, `replysync-retry`, `rt-tick` (15 min: accepted check due? outbox), `rt-outbox` (1 min while sheet writes wait).
 
-**storage.sync:** `mode` (`team` | `own`; absent = worked out, see above), `tabName`, `sheetUrl`, `teamUrl` (`""` = the built-in one), `scriptUrl`, `secretKey`, `useGoogleLogin`.
+**storage.sync:** `tabName`, `sheetUrl`, `teamUrl` (`""` = the built-in one). (Keys of the removed own-script set-up — `mode`, `scriptUrl`, `secretKey`, `useGoogleLogin` — are deleted on update.)
 
 **storage.local:**
 
@@ -467,13 +411,8 @@ Use a **copy of the template** (or of your sheet) first and a colleague's Linked
 - [ ] Signed out of Google entirely → “You're not signed in to Google in this Chrome”.
 - [ ] Delete the **Admin Reply** column in the copy → Test connection: ℹ “No Admin Reply column — admin replies are off…”; To send says “Admin replies are off”. Delete **Response / Notes** → a reply changes Sent → Replied, no text; Who accepted says “Off — …”. Delete **Sent Date** → a request gets Sent, no date. Delete **Personalized Message** → Test connection: Row 1 … has no “Personalized Message” column. Put the columns back.
 
-**Set-up (own script)**
-- [ ] Settings saved before 2.2 open on Advanced → **Use my sheet's own script instead** ticked, URL and key filled, no unsaved-changes bar; Test connection says “Connected”.
-- [ ] Change one character of the secret key → Test connection says the key doesn't match. Put it back.
-
 **Dashboard**
 - [ ] Click the ReplyTrack icon → the dashboard opens in a tab; click it again → Chrome switches to that tab (no second one). Green **Active**, no banner; Overview shows your name if the Team Member column has it.
-- [ ] ☀ → light theme; reload the page → it stays light.
 - [ ] Edit a Connection field → the “unsaved changes” bar appears; **Discard** → the saved values are back.
 
 **Outreach**
@@ -483,7 +422,6 @@ Use a **copy of the template** (or of your sheet) first and a colleague's Linked
 - [ ] **Start** → confirm. Within a minute: the request is on LinkedIn, the row says **Sent** and today's **Sent Date**. The Bounced and Sent rows didn't change.
 - [ ] Start again → “No rows are waiting”. Set the row back to *Not Started* and clear its Sent Date → Start → no request is sent, and the row gets **Sent** again with the **original** Sent Date.
 - [ ] A row for someone you sent a request to by hand (still pending) → Start → no request, the row gets **Sent** and the Sent Date stays **empty**.
-- [ ] Export CSV downloads your rows with the result columns.
 
 **Who accepted**
 - [ ] Colleague accepts. Outreach tab → **Who accepted → Check now** → the row's Response / Notes says **Accepted but not replied** (only if it was empty).
@@ -521,8 +459,7 @@ Use a **copy of the template** (or of your sheet) first and a colleague's Linked
 
 ## Before you commit
 
-- `apps-script/Code.gs` must keep `var SECRET_KEY = 'CHANGE-ME';` — never commit a real key. Members paste their key only in their own Apps Script editor.
-- The only URLs that belong in the repo are the two in `extension/team-config.js`: the **team** web app (`/exec`) and the template's **`/copy`** link — members download them with the ZIP. That's safe for the team web app (every request runs as the caller and needs their Google login), but they're visible to anyone who can see the repo. Never commit a member's own-script URL, a member's Sheet link, LinkedIn cookies, `ACoAA…` ids, or real people's names / messages. The README screenshots in `docs/images/` use made-up sample data only.
+- The only URLs that belong in the repo are the two in `extension/team-config.js`: the **team** web app (`/exec`) and the template's **`/copy`** link — members download them with the ZIP. That's safe for the team web app (every request runs as the caller and needs their Google login), but they're visible to anyone who can see the repo. Never commit a member's Sheet link, LinkedIn cookies, `ACoAA…` ids, or real people's names / messages. The README screenshots in `docs/images/` use made-up sample data only.
 - `.gitignore` excludes CSV exports, `outreach-sent-history*.json` (the old extension's history — real profiles), `*.local.gs`, `.env*`, editor folders and OS junk.
 
 ## Good to know

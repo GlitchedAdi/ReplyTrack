@@ -6,7 +6,6 @@
 		<title>ReplyTrack</title>
 		<link rel="icon" href="icons/icon48.png" />
 		<link rel="stylesheet" href="dashboard.css" />
-		<script src="dash/theme.js"></script>
 	</head>
 	<body>
 		<header class="top">
@@ -28,12 +27,12 @@
 					<button data-tab="outreach">Outreach</button>
 					<button data-tab="replies">Replies</button>
 					<button data-tab="tosend">To send <span class="count hidden" id="tabCount"></span></button>
+					<button data-tab="scraper">Scraper</button>
 					<button data-tab="settings">Settings</button>
 				</nav>
 				<div class="top-right">
 					<span class="status" id="status"><span class="dot"></span><span id="statusText">Paused</span></span>
 					<button class="btn sm secondary" id="pause"></button>
-					<button class="icon-btn" id="theme" title="Light theme"></button>
 					<div class="avatar" id="avatar">RT</div>
 				</div>
 			</div>
@@ -97,62 +96,76 @@
 						Works in the background, from a LinkedIn tab in a minimized window. Leave Chrome open and the computer awake; this page can be closed.
 					</p>
 				</div>
-				<div class="cols" style="margin-top: 16px">
+				<div class="grid2" style="margin-top: 16px">
 					<div class="card">
-						<div class="card-head"><h2>Message preview</h2><button class="link" data-goto="settings">Change the note</button></div>
-						<div id="noteMode" class="muted"></div>
+						<div class="card-head">
+							<h2>Rows</h2>
+							<div class="actions">
+								<select id="filter">
+									<option value="">All</option>
+									<option value="pending">Waiting</option>
+									<option value="sent">Sent</option>
+									<option value="skipped">Skipped</option>
+									<option value="failed">Failed</option>
+								</select>
+								<button class="btn sm secondary" id="reload"></button>
+							</div>
+						</div>
+						<div id="detect" style="font-size: 13px; margin: -6px 0 12px"></div>
+						<div class="table-wrap" id="rowsWrap">
+							<table>
+								<thead>
+									<tr>
+										<th>Row</th>
+										<th>Profile</th>
+										<th>Status</th>
+										<th>Detail</th>
+										<th>When</th>
+									</tr>
+								</thead>
+								<tbody id="rows"></tbody>
+							</table>
+						</div>
+						<div id="rowsEmpty"></div>
+						<p class="muted" id="rowsMore" style="font-size: 13px"></p>
+					</div>
+					<div class="card">
+						<div class="card-head"><h2>Message</h2></div>
+						<div class="field" style="margin-top: 0">
+							<label class="choice"><input type="radio" name="noteMode" value="column" />Each row's <b>Personalized Message</b></label>
+							<label class="choice"
+								><input type="radio" name="noteMode" value="typed" /><b>One note for everyone</b>
+								<textarea id="noteText" rows="4" placeholder="Hi {firstName}, …"></textarea>
+								<div class="hint" id="typedStatus"></div
+							></label>
+							<label class="choice"><input type="radio" name="noteMode" value="none" /><b>No note</b> — send the request without one</label>
+							<div class="hint" style="margin-top: 10px">
+								Placeholders: <code>{Name}</code> <code>{Company Name}</code> — any column — and <code>{firstName}</code> <code>{headline}</code> from the profile. A
+								placeholder with nothing to fill it is never sent: the row is skipped. Up to 300 characters.
+							</div>
+						</div>
+						<div class="label" style="margin-top: 18px">Preview — the first waiting rows</div>
 						<div class="preview" id="preview"></div>
 						<div class="warnings" id="warnings"></div>
 					</div>
-					<div class="stack">
-						<div class="card">
-							<div class="card-head"><h2>Pace &amp; limits</h2><button class="link" data-goto="settings">Change</button></div>
-							<div class="label">With these settings</div>
-							<div class="big-rate" id="rate"></div>
-							<div class="kv" id="pace"></div>
+					<details class="card pace-card">
+						<summary><h2>Pace &amp; limits</h2></summary>
+						<div class="pace">
+							<span>Wait on each profile before sending</span>
+							<span><input type="number" id="readMin" min="1" step="1" /> – <input type="number" id="readMax" min="1" step="1" /><span class="u">s</span></span>
+							<span>Pause before the next profile<small>Skipped rows move on after 3–6 s</small></span>
+							<span><input type="number" id="pauseMin" min="1" step="1" /> – <input type="number" id="pauseMax" min="1" step="1" /><span class="u">s</span></span>
+							<span>Take a 1–3 minute break every<small>0 = no breaks</small></span>
+							<span><input type="number" id="breakEvery" min="0" max="500" /><span class="u">requests</span></span>
+							<span>Daily LinkedIn limit<small>Connection requests + scraped profiles · 0 = off</small></span>
+							<span><input type="number" id="dailyCap" min="0" max="5000" /><span class="u">a day</span></span>
 						</div>
-						<div class="card">
-							<div class="card-head"><h2>Who accepted</h2><button class="btn sm secondary" id="acNow">Check now</button></div>
-							<p class="muted" style="font-size: 13px">
-								Twice a day (about 10 AM and 4 PM, or the next time Chrome is open), “Sent” rows from the last 30 days with an empty Response / Notes are
-								compared with your recently added connections.
-							</p>
-							<p id="acState" style="margin-top: 10px; font-size: 13px"></p>
-						</div>
+						<div class="hint">Saved as you type. Too little delay or too many requests can get your LinkedIn account restricted.</div>
+					</details>
+					<div class="card">
+						<div class="card-head"><h2>Who accepted</h2><button class="btn sm secondary" id="acNow" title="Check who accepted, now">Check</button></div>
+						<p id="acState" class="ac-state"></p>
 					</div>
-				</div>
-				<div class="card" style="margin-top: 16px">
-					<div class="card-head">
-						<h2>Rows</h2>
-						<div class="actions">
-							<select id="filter">
-								<option value="">All</option>
-								<option value="pending">Waiting</option>
-								<option value="sent">Sent</option>
-								<option value="skipped">Skipped</option>
-								<option value="failed">Failed</option>
-							</select>
-							<button class="btn sm secondary" id="reload"></button>
-							<button class="btn sm secondary" id="export"></button>
-						</div>
-					</div>
-					<div id="detect" style="font-size: 13px; margin: -6px 0 12px"></div>
-					<div class="table-wrap" id="rowsWrap">
-						<table>
-							<thead>
-								<tr>
-									<th>Row</th>
-									<th>Profile</th>
-									<th>Status</th>
-									<th>Detail</th>
-									<th>When</th>
-								</tr>
-							</thead>
-							<tbody id="rows"></tbody>
-						</table>
-					</div>
-					<div id="rowsEmpty"></div>
-					<p class="muted" id="rowsMore" style="font-size: 13px"></p>
 				</div>
 				<details class="card">
 					<summary><h2>What happens to each row</h2></summary>
@@ -236,6 +249,45 @@
 				</details>
 			</section>
 
+			<!-- ================= Scraper ================= -->
+			<section id="page-scraper" class="page">
+				<div class="page-head">
+					<div>
+						<div class="label">Scraper</div>
+						<h1>Sales Navigator scraper</h1>
+						<p>Scrapes Sales Navigator searches and LinkedIn profiles, finds email and phone numbers, and saves every lead to the <b>SCRAP</b> tab of your sheet as it goes.</p>
+					</div>
+				</div>
+				<div class="stats three">
+					<div class="card stat" data-accent="blue"><div class="label">Leads captured</div><div class="num" id="scLeads">0</div><div class="cap" id="scLeadsCap">saved to your sheet’s SCRAP tab</div></div>
+					<div class="card stat" data-accent="amber"><div class="label">Search run</div><div class="num word" id="scSearch">Idle</div><div class="cap" id="scSearchCap"></div></div>
+					<div class="card stat" data-accent="purple"><div class="label">Profile step</div><div class="num word" id="scProfiles">Idle</div><div class="cap" id="scProfilesCap"></div></div>
+				</div>
+				<div class="cols" style="margin-top: 16px">
+					<div class="card">
+						<h2>Scrape a Sales Navigator search</h2>
+						<ol class="muted" style="padding-left: 20px; font-size: 14px; line-height: 1.7">
+							<li>Open your lead search in <b>Sales Navigator</b>.</li>
+							<li>Click the <b>ReplyTrack</b> icon at the top right of Chrome — on a Sales Navigator page it opens the scraper.</li>
+							<li>Set the number of pages, pick <b>Quick</b>, <b>Standard</b> or <b>Deep Run</b>, and press <b>Start Auto-Scraping</b>.</li>
+							<li>Every lead goes into the <b>SCRAP</b> tab of your sheet by itself — email, phone and the rest are filled in as they're found.</li>
+						</ol>
+					</div>
+					<div class="card">
+						<h2>Email &amp; phone</h2>
+						<ol class="muted" style="padding-left: 20px; font-size: 14px; line-height: 1.7">
+							<li><b>One person:</b> open their LinkedIn profile, click the <b>ReplyTrack</b> icon, then <b>Find contact info</b>.</li>
+							<li><b>Everyone in a search:</b> pick <b>Deep Run</b> — it finds email and phone for each lead and writes them into SCRAP.</li>
+							<li>Tick <b>Also read the banner image</b> to read contact details written in the profile's banner (OCR).</li>
+						</ol>
+					</div>
+				</div>
+				<p class="muted" style="margin-top: 16px; font-size: 13px">
+					The scraper uses LinkedIn from this browser like outreach does. Don't run a big scrape and an outreach run at the same time — too many requests can lead to restrictions on
+					your LinkedIn account. “Pause everything” doesn't stop the scraper: use its own Stop button.
+				</p>
+			</section>
+
 			<!-- ================= Settings ================= -->
 			<section id="page-settings" class="page">
 				<div class="page-head">
@@ -247,8 +299,8 @@
 				<div class="settings">
 					<div class="card" id="connCard">
 						<h2>Connection</h2>
-						<p id="connIntro">Your Google Sheet — your copy of the team template.</p>
-						<div class="field team-only">
+						<p>Your Google Sheet — your copy of the team template.</p>
+						<div class="field">
 							<div class="field-head"><label class="label" for="sheetUrl">Your sheet link</label><span class="hint">Copy it from the address bar while your sheet is open</span></div>
 							<input id="sheetUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://docs.google.com/spreadsheets/d/…/edit" />
 							<div class="hint hidden" id="templateHint">No sheet yet? <a class="link" id="templateLink" target="_blank" rel="noopener">Make your copy of the template</a></div>
@@ -257,48 +309,19 @@
 							<div class="field-head"><label class="label" for="tabName">Tab name</label><span class="hint">Exactly as the tab at the bottom of your sheet</span></div>
 							<input id="tabName" type="text" autocomplete="off" spellcheck="false" placeholder="MY LEADS" />
 						</div>
-						<div class="field team-only">
+						<div class="field">
 							<span class="label">Google account</span>
 							<div class="actions" style="margin-top: 6px"><button class="btn secondary" id="connect" type="button">Connect Google account</button></div>
 							<div class="hint" id="accountLine"></div>
 						</div>
 						<details class="advanced" id="advanced">
 							<summary>Advanced</summary>
-							<div class="field team-only">
+							<div class="field">
 								<div class="field-head">
 									<label class="label" for="teamUrl">Team web app URL</label><button class="link" id="teamUrlReset" type="button">Reset to default</button>
 								</div>
 								<input id="teamUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" />
 								<div class="hint">Built into ReplyTrack. Change it only if your team lead asks you to.</div>
-							</div>
-							<label class="check">
-								<input id="ownMode" type="checkbox" />
-								<span
-									>Use my sheet's own script instead
-									<span class="hint" style="display: block; margin: 2px 0 0"
-										>For a sheet with Code.gs inside it that you deployed yourself (“Execute as: Me”), e.g. a sheet synced to a main sheet.</span
-									></span
-								>
-							</label>
-							<div class="own-only">
-								<div class="field">
-									<div class="field-head"><label class="label" for="scriptUrl">Your script's web app URL</label><span class="hint">Starts with https://script.google.com/, ends with /exec</span></div>
-									<input id="scriptUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" />
-								</div>
-								<div class="field">
-									<div class="field-head"><label class="label" for="secretKey">Secret key</label><span class="hint">Same as <code>SECRET_KEY</code> in your Code.gs</span></div>
-									<div class="inline">
-										<input id="secretKey" type="password" autocomplete="off" spellcheck="false" />
-										<button class="btn secondary" id="showKey" type="button">Show</button>
-									</div>
-								</div>
-								<label class="check">
-									<input id="useGoogleLogin" type="checkbox" />
-									<span
-										>Send my Google login with each request
-										<span class="hint" style="display: block; margin: 2px 0 0">Only for a script deployed to “Anyone within your organisation”.</span></span
-									>
-								</label>
 							</div>
 						</details>
 						<div class="conn-actions">
@@ -311,69 +334,12 @@
 					</div>
 
 					<div class="card">
-						<h2>Outreach</h2>
-						<p>A row only gets a request when both LinkedIn Profile and Personalized Message are filled. This decides what's sent with it.</p>
-						<div class="field">
-							<span class="label">Note</span>
-							<label class="choice"><input type="radio" name="noteMode" value="column" />Each row's <b>Personalized Message</b></label>
-							<label class="choice"
-								><input type="radio" name="noteMode" value="typed" /><b>One note for everyone</b>
-								<textarea id="noteText" rows="4" placeholder="Hi {firstName}, …"></textarea>
-								<div class="hint" id="typedStatus"></div
-							></label>
-							<label class="choice"><input type="radio" name="noteMode" value="none" /><b>No note</b> — send the request without one</label>
-							<div class="hint" style="margin-top: 10px">
-								Placeholders: <code>{Name}</code> <code>{Company Name}</code> — any column — and <code>{firstName}</code> <code>{headline}</code> from the profile. A
-								placeholder with nothing to fill it is never sent: the row is skipped. Up to 300 characters.
-							</div>
-						</div>
-						<div class="field">
-							<span class="label">Pace &amp; limits</span>
-							<div class="pace">
-								<span>Wait on each profile before sending</span>
-								<span><input type="number" id="readMin" min="1" step="1" /> – <input type="number" id="readMax" min="1" step="1" /><span class="u">s</span></span>
-								<span>Pause before the next profile<small>Skipped rows move on after 3–6 s</small></span>
-								<span><input type="number" id="pauseMin" min="1" step="1" /> – <input type="number" id="pauseMax" min="1" step="1" /><span class="u">s</span></span>
-								<span>Take a 1–3 minute break every<small>0 = no breaks</small></span>
-								<span><input type="number" id="breakEvery" min="0" max="500" /><span class="u">requests</span></span>
-								<span>Auto-stop after<small>0 = off — Continue goes on</small></span>
-								<span><input type="number" id="dailyCap" min="0" max="5000" /><span class="u">a day</span></span>
-							</div>
-							<div class="big-rate" id="setRate"></div>
-							<div class="hint">Saved as you type. Too little delay and too many requests can lead to restrictions on your LinkedIn account.</div>
-						</div>
-					</div>
-
-					<div class="card wide">
 						<h2>Data</h2>
 						<p>Kept in this Chrome profile only.</p>
-						<div class="data-grid">
 						<div class="field">
 							<span class="label">Reply sync</span>
 							<div class="actions" style="margin-top: 4px"><button class="btn secondary" id="reset">Reset sync history</button></div>
 							<div class="hint">The next sync re-checks your 50 most recent conversations. Nothing already in the sheet is duplicated.</div>
-						</div>
-						<div class="field">
-							<span class="label">Import sent history</span>
-							<p class="muted" style="font-size: 13px">
-								From the old “LinkedIn Automated Reachout” extension, so nobody it already sent a request to gets a second one. Do this once, before your first
-								run.
-							</p>
-							<details class="how">
-								<summary>How to get the file from the old extension</summary>
-								<ol>
-									<li>Click the old extension's icon → <b>Upload CSV</b> (this opens its page).</li>
-									<li>Press <b>F12</b> (Mac: Cmd+Option+I) → <b>Console</b>, paste this line and press Enter. It downloads <code>outreach-sent-history.json</code>:</li>
-								</ol>
-								<pre class="code">chrome.storage.local.get(null, d => { const h = {}; for (const k in d) if (k.startsWith("h:")) h[k] = d[k]; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(h)], { type: "application/json" })); a.download = "outreach-sent-history.json"; a.click(); console.log(Object.keys(h).length + " people"); });</pre>
-								<p class="hint">The old extension's <b>Export CSV</b> file works too (rows whose requestStatus is “Sent”).</p>
-							</details>
-							<div class="actions" style="margin-top: 14px">
-								<button class="btn secondary" id="importBtn">Choose file…</button>
-								<input type="file" id="importFile" accept=".json,.csv,application/json,text/csv" hidden />
-							</div>
-							<div id="importMsg" class="msg"></div>
-						</div>
 						</div>
 					</div>
 				</div>
@@ -395,6 +361,7 @@
 		<script src="dash/outreach.js"></script>
 		<script src="dash/replies.js"></script>
 		<script src="dash/tosend.js"></script>
+		<script src="dash/scraper.js"></script>
 		<script src="dash/settings.js"></script>
 	</body>
 </html>

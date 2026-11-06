@@ -91,7 +91,6 @@ An **extension** is a small add-on for Chrome. You'll load ReplyTrack from a fol
    <img src="docs/images/03-connected-page.png" width="420" alt="The You're connected page with your Google account and a Make a copy of the sheet button">
 10. Back in Settings, click **Save**. ReplyTrack saves your settings and tests the connection.
 11. Read the message under the buttons. It should be green and start with **Connected as** *your Google account*. Check that's the account with your sheet.
-12. Only if you used the old **LinkedIn Automated Reachout** extension: scroll down to **Data → Import sent history** and follow the steps shown there, so nobody gets a second request.
 
 <img src="docs/images/03-settings-connected.png" width="480" alt="Settings after Save: your sheet link, MY LEADS, Connect Google account and a green Connected as message">
 

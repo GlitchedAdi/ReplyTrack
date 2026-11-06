@@ -1,9 +1,9 @@
 {
 	"manifest_version": 3,
 	"name": "ReplyTrack",
-	"version": "2.2.0",
-	"description": "Sends LinkedIn connection requests from your Google Sheet, copies replies back into it, and sends your manager's replies when you say so.",
-	"permissions": ["storage", "unlimitedStorage", "scripting", "webRequest", "alarms", "notifications", "idle", "cookies"],
+	"version": "2.3.0",
+	"description": "Sends LinkedIn connection requests from your Google Sheet, copies replies back into it, sends your manager's replies when you say so — and scrapes Sales Navigator leads and contact info.",
+	"permissions": ["storage", "unlimitedStorage", "scripting", "webRequest", "alarms", "notifications", "idle", "cookies", "activeTab"],
 	"host_permissions": [
 		"https://www.linkedin.com/*",
 		"https://script.google.com/*",
@@ -18,10 +18,34 @@
 			"matches": ["https://www.linkedin.com/messaging/*"],
 			"js": ["content.js"],
 			"run_at": "document_idle"
+		},
+		{
+			"matches": ["https://www.linkedin.com/sales/*"],
+			"js": ["scraper/injected.js", "scraper/api-helper.js"],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": ["https://www.linkedin.com/sales/*"],
+			"js": ["scraper/voyager-map.js", "scraper/content.js"],
+			"run_at": "document_start"
+		},
+		{
+			"matches": ["https://www.linkedin.com/*"],
+			"exclude_matches": ["https://www.linkedin.com/sales/*"],
+			"js": ["scraper/net-tap.js"],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": ["https://www.linkedin.com/*"],
+			"exclude_matches": ["https://www.linkedin.com/sales/*"],
+			"js": ["scraper/contact-parse.js", "scraper/voyager-map.js", "scraper/contact-finder.js"],
+			"run_at": "document_start"
 		}
 	],
 	"action": {
-		"default_title": "ReplyTrack — open the dashboard",
+		"default_title": "ReplyTrack",
 		"default_icon": {
 			"16": "icons/icon16.png",
 			"32": "icons/icon32.png",

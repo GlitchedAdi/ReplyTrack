@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="color-scheme" content="dark" />
+		<link rel="stylesheet" href="popup.css" />
+	</head>
+	<body>
+		<h3>Sales Nav Scraper <span class="ver" id="ver"></span></h3>
+		<a href="#" id="openDashboard">Open the ReplyTrack dashboard →</a>
+
+		<div class="stats">
+			Leads captured: <strong id="leadCount">0</strong><span id="profileWrap"> · Profiles: <strong id="profileCount">0</strong></span><br />
+			<span id="profileBreakdown" class="status"></span>
+			<span id="runState" class="status">Idle</span>
+			<div id="tabWarn" class="tab-warn" style="display: none"></div>
+		</div>
+
+		<div id="contactBox" class="contact-box" style="display: none">
+			<button id="findContactBtn" class="btn-find">Find contact info</button>
+			<div id="contactResult" class="cf-result" style="display: none"></div>
+		</div>
+
+		<div class="field-row" style="margin-bottom: 0">
+			<label for="maxPagesInput">Pages to scrape</label>
+			<input type="number" id="maxPagesInput" value="1" min="1" max="400" />
+		</div>
+		<div class="total-pages">This search has <strong id="detectedPagesCount">--</strong> pages</div>
+		<label class="check">
+			<input type="checkbox" id="startFromCurrent" />
+			Continue where the last run stopped
+		</label>
+
+		<div class="modes">
+			<label class="mode">
+				<span class="t"><input type="radio" name="mode" value="basic" />Quick <span class="speed fast">FASTEST</span></span>
+				<div class="d">Name, title, company, location and profile links.</div>
+			</label>
+			<label class="mode">
+				<span class="t"><input type="radio" name="mode" value="pb" />Standard <span class="speed fast">FAST</span></span>
+				<div class="d">34 columns: company, industry, tenure, summary, connection degree…</div>
+				<label class="check sub">
+					<input type="checkbox" id="fillPast" />
+					<span>Also past experience + public profile link <span id="pastInfo" class="extra"></span></span>
+				</label>
+			</label>
+			<label class="mode">
+				<span class="t"><input type="radio" name="mode" value="full" />Deep <span class="speed slow">SLOW</span></span>
+				<div class="d">Everything above plus each lead's full profile, email and phone.</div>
+				<label class="check sub">
+					<input type="checkbox" id="deepContacts" checked />
+					<span>Find email &amp; phone</span>
+				</label>
+			</label>
+		</div>
+
+		<div class="estimate" id="estimate">Open a Sales Navigator search to see an estimate.</div>
+
+		<button id="toggleBtn" class="btn-start">
+			<span id="toggleLabel">Start Auto-Scraping</span>
+			<span id="toggleSub" class="btn-sub"></span>
+		</button>
+		<div id="continueBox" class="continue-box" style="display: none">
+			<div id="continueText" class="continue-text"></div>
+			<button id="profilesOnlyBtn" class="btn-continue">Continue</button>
+		</div>
+		<p class="saved">Every lead is saved to the <b>SCRAP</b> tab of your sheet.</p>
+
+		<details class="settings">
+			<summary>More</summary>
+			<div class="group">Leads</div>
+			<button id="clearLeadsBtn" class="btn-small">Clear captured leads</button>
+
+			<div class="group">Speed &amp; safety</div>
+			<div class="field-row">
+				<label>Pause between pages (s)</label>
+				<span>
+					<input type="number" id="searchMin" class="narrow" value="2" min="0.5" max="120" step="0.5" /> –
+					<input type="number" id="searchMax" class="narrow" value="4" min="0.5" max="300" step="0.5" />
+				</span>
+			</div>
+			<div class="field-row">
+				<label for="concurrency">Parallel profiles</label>
+				<input type="number" id="concurrency" value="2" min="1" max="3" />
+			</div>
+			<div class="field-row">
+				<label>Pause per profile (s)</label>
+				<span>
+					<input type="number" id="delayMin" class="narrow" value="3" min="0.5" max="300" step="0.5" /> –
+					<input type="number" id="delayMax" class="narrow" value="6" min="0.5" max="600" step="0.5" />
+				</span>
+			</div>
+			<input type="hidden" id="dailyCap" value="0" />
+			<div class="hint">Daily limit: shared with outreach — set it on ReplyTrack's Outreach page.</div>
+			<div class="hint" id="todayCount"></div>
+			<div class="hint">Too many requests can get your LinkedIn account restricted. If LinkedIn signs you out, sign back in and press Continue — nothing is lost.</div>
+
+			<div class="group log-head">
+				<span>Log</span>
+				<span class="row">
+					<button id="copyLogBtn" class="btn-small">Copy</button>
+					<button id="clearLogBtn" class="btn-small">Clear</button>
+				</span>
+			</div>
+			<div id="log"></div>
+		</details>
+
+		<script src="popup.js"></script>
+	</body>
+</html>

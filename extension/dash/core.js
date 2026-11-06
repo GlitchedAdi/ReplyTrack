@@ -1,5 +1,5 @@
 // ReplyTrack dashboard — the one page (the toolbar icon opens it). This file: helpers and
-// state shared by the sections, the top bar, the banner, the tabs and the theme. Each
+// state shared by the sections, the top bar, the banner and the tabs. Each
 // section (dash/overview.js, outreach.js, replies.js, tosend.js, settings.js) registers
 // what it draws with onRender() — called on every storage change and once a second —
 // and onChange() for work that should only happen when its data changes.
@@ -31,7 +31,7 @@ function ago(ts) {
 	return `${Math.round(h / 24)} days ago`;
 }
 const STALE_SYNC_MS = 3 * 60 * 1000; // same as bg/replysync.js
-const BUSY = { outreach: "outreach", replysync: "the reply sync", accepted: "the accepted check", admin: "an Admin Reply", adminCheck: "the connection check" };
+const BUSY = { outreach: "outreach", replysync: "the reply sync", accepted: "the accepted check", admin: "an Admin Reply", adminCheck: "the connection check", scraper: "the scraper" };
 
 // Sets innerHTML only when it changed (keeps hover states and selections steady).
 function setHTML(el, html) {
@@ -45,15 +45,12 @@ function setHTML(el, html) {
 // ---------------------------------------------------------------------------
 const svg = d => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICON = {
-	sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
-	moon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
 	pause: svg('<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'),
 	play: svg('<path d="M7 5l12 7-12 7z"/>'),
 	stop: svg('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
 	plus: svg('<path d="M12 5v14M5 12h14"/>'),
 	send: svg('<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>'),
 	refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/>'),
-	download: svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>'),
 	inbox: svg('<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/>'),
 	clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
 	chat: svg('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
@@ -129,9 +126,9 @@ function render() {
 }
 
 // ---------------------------------------------------------------------------
-// Tabs (#overview, #outreach, #replies, #tosend, #settings)
+// Tabs (#overview, #outreach, #replies, #tosend, #scraper, #settings)
 // ---------------------------------------------------------------------------
-const TABS = ["overview", "outreach", "replies", "tosend", "settings"];
+const TABS = ["overview", "outreach", "replies", "tosend", "scraper", "settings"];
 let tab = "overview";
 function showTab(name) {
 	if (!TABS.includes(name)) name = "overview";
@@ -149,24 +146,6 @@ document.addEventListener("click", e => {
 	const go = e.target.closest("[data-goto]");
 	if (go) showTab(go.dataset.goto);
 });
-
-// ---------------------------------------------------------------------------
-// Theme
-// ---------------------------------------------------------------------------
-function applyTheme(t) {
-	if (t === "light") document.documentElement.dataset.theme = "light";
-	else delete document.documentElement.dataset.theme;
-	$("theme").innerHTML = t === "light" ? ICON.moon : ICON.sun;
-	$("theme").title = t === "light" ? "Dark theme" : "Light theme";
-}
-$("theme").addEventListener("click", () => {
-	const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-	try {
-		localStorage.setItem("rtTheme", next);
-	} catch (e) {}
-	applyTheme(next);
-});
-applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
 // ---------------------------------------------------------------------------
 // Top bar + banner

@@ -14,7 +14,7 @@ onRender(() => {
 	$("memberTab").textContent = !configured() ? "Not set up yet — connect your sheet in Settings." : who ? `Tab “${cfg.tabName}”` : `Tab “${cfg.tabName}” — add your name in the sheet's Team Member column to see it here.`;
 
 	$("ovSent").textContent = (counts.today || 0).toLocaleString();
-	$("ovSentCap").textContent = counts.limit ? `of ${counts.limit.toLocaleString()} daily limit` : "no daily limit";
+	$("ovSentCap").textContent = counts.limit ? `of ${counts.limit.toLocaleString()} daily limit${counts.scraped ? ` (incl. ${counts.scraped.toLocaleString()} scraped)` : ""}` : "no daily limit";
 	const w = st.acWeek || {};
 	$("ovAccepted").textContent = (w.start === startOfWeek() ? w.n || 0 : 0).toLocaleString();
 	const r = st.rsToday || {};

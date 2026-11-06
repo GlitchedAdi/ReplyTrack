@@ -1,19 +1,16 @@
-// The member's Google Sheet, through Code.gs (apps-script/Code.gs) — one of two set-ups:
-//   team — the team web app (built in through team-config.js). Each request carries the
-//          member's Google login and their sheet's id; it runs as them, so it only reaches
-//          sheets they can edit. No key.
-//   own  — the member's sheet's own script: its web app URL, and the secret key in every request.
-// The key and the sheet id travel in the body — never in the URL.
+// The member's Google Sheet, through the team web app (apps-script/Code.gs, built in through
+// team-config.js). Each request carries the member's Google login and their sheet's id (in the
+// body, never in the URL); it runs as them, so it only reaches sheets they can edit.
 // Reads are answered straight away. Writes go through an outbox kept in storage: if the
 // sheet can't be reached they're retried every minute, in order, until they go through.
 // Only writes to the SHEET are ever retried — never anything on LinkedIn.
 //
-// storage.sync  { mode, tabName, sheetUrl, teamUrl, scriptUrl, secretKey, useGoogleLogin }  (S.connection)
+// storage.sync  { tabName, sheetUrl, teamUrl }  (S.connection)
 // storage.local rtOutbox [ { id, action, data, label, at, tries } ]
 //               rtSheetError { at, error, code, account } — the banner
 //               rtAccount { email, at } — the Google account the team web app last ran as
 //
-// Problems with the Google account (team web app) come back with a `code`:
+// Problems with the Google account come back with a `code`:
 //   signin   — not signed in to Google in this Chrome (Google's sign-in page came back)
 //   consent  — the account Google used hasn't approved the web app yet (permission page)
 //   sheets   — it approved it, but left "Google Sheets" unticked on Google's screen
@@ -30,7 +27,7 @@ const Sheet = (() => {
 	const POST_TIMEOUT_MS = 45000;
 	// Answers about one row, not about the sheet: the write is dropped (and logged), not retried.
 	const ROW_ERRORS = /^(profile not in tab|cell full|admin reply changed|several rows match|bad request|no "[^"]+" column|"[^"]+" (has a formula|is filled by a formula))/i;
-	// Code.gs answers (team web app) → code
+	// Code.gs answers → code
 	const CODES = [
 		[/^no sheets permission/i, "sheets"],
 		[/^no access to sheet/i, "noaccess"],
@@ -45,12 +42,7 @@ const Sheet = (() => {
 	const configured = s => S.isReady(s);
 
 	// Google sent a web page instead of Code.gs's answer.
-	function pageAnswer(res, text, s) {
-		if (s.mode !== "team")
-			return {
-				ok: false,
-				error: 'Apps Script returned a web page instead of an answer. Check the deployment has "Who has access: Anyone", the URL ends in /exec, and the script was saved without errors.',
-			};
+	function pageAnswer(res, text) {
 		// Not signed in: a GET is sent to Google's sign-in page, a POST gets 401.
 		if (res.status === 401 || /^https:\/\/accounts\.google\.com\//i.test(String(res.url || ""))) return { ok: false, code: "signin", error: "You're not signed in to Google in this Chrome." };
 		if (/unable to open the file/i.test(text)) return { ok: false, code: "account", error: "Google wouldn't open the team web app for the Google account it used." };
@@ -60,7 +52,6 @@ const Sheet = (() => {
 
 	// → the script's JSON answer, or { ok: false, error, code?, transient } (transient = network trouble).
 	async function post(body, s) {
-		const team = s.mode === "team";
 		let lastError = "";
 		for (let attempt = 1; attempt <= 2; attempt++) {
 			const ctrl = new AbortController();
@@ -70,15 +61,15 @@ const Sheet = (() => {
 					method: "POST",
 					// text/plain keeps this a "simple" request; Apps Script still gets the JSON.
 					headers: { "Content-Type": "text/plain;charset=utf-8" },
-					body: JSON.stringify(team ? { ...body, sheet: s.sheetId, tab: s.tabName } : { ...body, key: s.secretKey, tab: s.tabName }),
+					body: JSON.stringify({ ...body, sheet: s.sheetId, tab: s.tabName }),
 					redirect: "follow",
 					// The team web app runs as you: Google needs your login (cookies) to know who you are.
-					credentials: s.googleLogin ? "include" : "omit",
+					credentials: "include",
 					signal: ctrl.signal,
 				});
 				const text = (await res.text()).trim();
 				if (res.status >= 500 || res.status === 429) throw new Error(`HTTP ${res.status}`);
-				if (text.startsWith("<")) return pageAnswer(res, text, s);
+				if (text.startsWith("<")) return pageAnswer(res, text);
 				if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
 				try {
 					const j = JSON.parse(text);
@@ -123,8 +114,7 @@ const Sheet = (() => {
 	// Settings test (from the settings page, maybe not saved yet: override = the typed fields).
 	async function ping(override = {}) {
 		const s = S.connection({ ...(await raw()), ...override });
-		if (!configured(s))
-			return { ok: false, error: s.mode === "team" ? "Paste your sheet link and enter the tab name first." : "Enter the tab name, the web app URL and the secret key first." };
+		if (!configured(s)) return { ok: false, error: "Paste your sheet link and enter the tab name first." };
 		const r = await post({ action: "ping" }, s);
 		if (r.ok) await noteAccount(r.account);
 		return r;
