@@ -3,6 +3,7 @@
 // whose Sent Date is in the last 30 days are compared with your "recently added"
 // connections list on LinkedIn (a few requests, not one per row). Someone on that list
 // accepted: "Accepted but not replied" goes into their Response / Notes.
+// Off when the sheet has no Sent Date or no Response / Notes column.
 // Waits for the lock like everything else on LinkedIn, and is off while paused.
 //
 // storage.local  acStatus { lastRunAt, lastTryAt, summary, error, found }
@@ -53,6 +54,13 @@ const Accepted = (() => {
 		try {
 			const r = await Sheet.read();
 			if (!r.ok) throw new Error(`couldn't read your sheet: ${r.error}`);
+			// Needs both: when the request was sent, and a Response / Notes cell to write to.
+			const off = S.missingColumns(r.header).filter(m => m.key === "sentDate" || m.key === "notes");
+			if (off.length) {
+				const summary = `Off — your sheet has no ${off.map(m => `“${m.name}”`).join(" or ")} column.`;
+				await setStatus({ lastRunAt: Date.now(), summary, error: "", found: 0 });
+				return { ok: true, found: 0, off: true };
+			}
 			const c = {};
 			for (const k of ["profile", "status", "notes", "sentDate", "name"]) c[k] = S.findCol(r.header, S.COLUMNS[k]);
 			const oldest = Date.now() - MAX_AGE_DAYS * DAY_MS;

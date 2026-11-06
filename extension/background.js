@@ -1,6 +1,7 @@
 // ReplyTrack — the one service worker. The parts live in bg/ (each file says what it keeps):
+//   team-config.js   the team web app URL and template link (filled in by the team lead)
 //   bg/common.js     helpers, the two logs ([Outreach] / [ReplySync])
-//   bg/sheet.js      your own Google Sheet (Apps Script web app, secret key, write outbox)
+//   bg/sheet.js      your Google Sheet (team web app or your sheet's own script, write outbox)
 //   bg/lock.js       one thing at a time on LinkedIn
 //   bg/linkedin.js   the minimized LinkedIn worker tab (outreach.js runs there)
 //   bg/outreach.js   connection requests from your sheet's rows
@@ -9,6 +10,7 @@
 //   bg/admin.js      Admin Replies: the "To send" list and sending one, when you say so
 //   bg/control.js    Pause everything / Start again
 importScripts(
+	"team-config.js",
 	"shared.js",
 	"bg/common.js",
 	"bg/sheet.js",

@@ -1,13 +1,14 @@
 {
 	"manifest_version": 3,
 	"name": "ReplyTrack",
-	"version": "2.1.0",
+	"version": "2.2.0",
 	"description": "Sends LinkedIn connection requests from your Google Sheet, copies replies back into it, and sends your manager's replies when you say so.",
 	"permissions": ["storage", "unlimitedStorage", "scripting", "webRequest", "alarms", "notifications", "idle", "cookies"],
 	"host_permissions": [
 		"https://www.linkedin.com/*",
 		"https://script.google.com/*",
-		"https://script.googleusercontent.com/*"
+		"https://script.googleusercontent.com/*",
+		"https://accounts.google.com/*"
 	],
 	"background": {
 		"service_worker": "background.js"

@@ -53,6 +53,8 @@ onRender(() => {
 	} else if (s.lastSummary) parts.push(`<span class="muted">${esc(s.lastSummary)}</span>`);
 	const box = st.rtOutbox || [];
 	if (box.length) parts.push(`<span class="err">${plural(box.length, "change")} waiting to be written to your sheet — retrying every minute.</span>`);
+	if (configured() && !hasColumn("notes"))
+		parts.push('<span class="muted">Your sheet has no Response / Notes column: a reply changes Outreach Status from Sent to Replied, but its text isn\'t saved in the sheet.</span>');
 	setHTML($("rsSummary"), parts.join("<br>") || '<span class="muted">The first sync runs once your sheet is connected.</span>');
 
 	const recent = (st.rsRecent || []).slice(-20).reverse();

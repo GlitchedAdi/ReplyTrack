@@ -255,7 +255,7 @@
 	}
 
 	// ---- Talking to background.js -------------------------------------------
-	const STOPPED_TEXT = "Sync was stopped from the extension popup — not opening any more conversations or sending anything to the sheet.";
+	const STOPPED_TEXT = "Sync was stopped from the dashboard — not opening any more conversations or sending anything to the sheet.";
 	async function send(msg) {
 		if (!chrome.runtime || !chrome.runtime.id) throw new Abort("The extension was reloaded — this page will sync on its next load.");
 		if (stopRequested) throw new Stopped(STOPPED_TEXT);

@@ -46,7 +46,8 @@ function fillCard(el, it) {
 	if (it.url) a.href = it.url;
 	el.querySelector(".row").textContent = `Row ${it.row}`;
 	const their = el.querySelector(".their");
-	if (their) setHTML(their, it.latest ? `${esc(it.latest.text)}${it.latest.when ? `<span class="when">${esc(it.latest.when)}</span>` : ""}` : '<span class="muted">Nothing in Response / Notes.</span>');
+	const noNotes = !hasColumn("notes") ? "Your sheet has no Response / Notes column." : "Nothing in Response / Notes.";
+	if (their) setHTML(their, it.latest ? `${esc(it.latest.text)}${it.latest.when ? `<span class="when">${esc(it.latest.when)}</span>` : ""}` : `<span class="muted">${noNotes}</span>`);
 	const ta = el.querySelector("textarea");
 	const mine = job && job.id === it.id ? job : null;
 	ta.disabled = !!mine || paused;
@@ -149,7 +150,11 @@ onRender(() => {
 	$("chatEmpty").classList.toggle("hidden", chats.length > 0);
 	setHTML(
 		$("adEmpty"),
-		configured() ? empty("inbox", "No admin replies", "Replies your manager writes in the main sheet show up here, ready to send.") : empty("inbox", "Not set up yet", "Connect your sheet in Settings.")
+		!configured()
+			? empty("inbox", "Not set up yet", "Connect your sheet in Settings.")
+			: !hasColumn("admin")
+				? empty("inbox", "Admin replies are off", "Your sheet has no Admin Reply column. People you're already connected with still show up below.")
+				: empty("inbox", "No admin replies", "Replies your manager writes in the main sheet show up here, ready to send.")
 	);
 	setHTML($("chatEmpty"), empty("users", "Nobody here", "People an outreach run finds already connected show up here, to send their message as a chat."));
 
