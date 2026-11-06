@@ -121,7 +121,8 @@ const Admin = (() => {
 			const url = String(cells[c.profile] || "").trim();
 			const key = profileKey(url);
 			const name = c.name >= 0 ? String(cells[c.name] || "").trim() : "";
-			if (clean(cells[c.admin])) rows.push({ row: r.first + i, url, key, name, admin: String(cells[c.admin]), notes: String(cells[c.notes] || "") });
+			// No Admin Reply column → no admin replies; no Response / Notes column → no "their latest message".
+			if (c.admin >= 0 && clean(cells[c.admin])) rows.push({ row: r.first + i, url, key, name, admin: String(cells[c.admin]), notes: c.notes >= 0 ? String(cells[c.notes] || "") : "" });
 			// Already a connection, and the row is still waiting: its message can go as a chat.
 			if (key && connected[key] && S.isSendable(cells[c.status]) && clean(cells[c.message])) chats.push({ row: r.first + i, url, key, name, cells });
 		});
@@ -675,5 +676,5 @@ const Admin = (() => {
 		if (t.fail === 3) log("warn", "The learned message request failed 3 times — using the built-in one. Send one message by hand to learn the current one.");
 	}
 
-	return { historyFor, refresh, rebuild, send, answerUnclear, sentByHand, skip, cancel, pause, recover, lookupDegrees, noteConnected };
+	return { historyFor, refresh, rebuild, send, answerUnclear, sentByHand, skip, cancel, pause, recover, noteConnected };
 })();

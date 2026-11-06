@@ -999,6 +999,32 @@ details.card[open] > summary {
 #connCard .check {
 	margin-top: 16px;
 }
+#connCard .field-head .link {
+	font-size: 12px;
+}
+#connCard .account {
+	color: var(--text);
+	font-weight: 600;
+}
+/* Team web app vs. the sheet's own script: only one set of fields shows. */
+#connCard.own .team-only,
+#connCard:not(.own) .own-only {
+	display: none;
+}
+#connCard details.advanced {
+	margin-top: 18px;
+	padding-top: 12px;
+	border-top: 1px solid var(--line);
+}
+#connCard details.advanced > summary {
+	cursor: pointer;
+	font-size: 13.5px;
+	font-weight: 600;
+	color: var(--muted);
+}
+#connCard details.advanced[open] > summary {
+	color: var(--text);
+}
 .conn-actions {
 	margin-top: 16px;
 	padding-top: 16px;

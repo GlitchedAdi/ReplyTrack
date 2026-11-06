@@ -272,7 +272,7 @@ const Outreach = (() => {
 	async function loadSheet() {
 		if (running) return { ok: false, error: "Stop the run first." };
 		const r = await Sheet.read();
-		if (!r.ok) return { ok: false, error: r.setup ? "Enter your sheet settings first (⚙️ in the popup)." : `Couldn't read your sheet: ${r.error}` };
+		if (!r.ok) return { ok: false, error: r.setup ? "Connect your sheet in Settings first." : `Couldn't read your sheet: ${r.error}` };
 		const header = r.header || [];
 		const c = {};
 		for (const k of ["profile", "message", "status", "name"]) c[k] = S.findCol(header, S.COLUMNS[k]);
@@ -281,7 +281,8 @@ const Outreach = (() => {
 		const stats = { rows: 0, waiting: 0, statuses: {}, noUrl: 0, noMessage: 0, blocked: 0 };
 		const groups = new Map(); // person → { id, url, rows: [{ row, status, msg }] }
 		r.rows.forEach((cells, i) => {
-			if (!cells.some(x => String(x).trim())) return; // empty row
+			// An empty row — or one with only the template's pre-filled "Not Started" — isn't a lead yet.
+			if (S.isSendable(cells[c.status]) && !cells.some((x, j) => j !== c.status && String(x).trim())) return;
 			stats.rows++;
 			const status = String(cells[c.status] || "").trim();
 			if (status) stats.statuses[status] = (stats.statuses[status] || 0) + 1;

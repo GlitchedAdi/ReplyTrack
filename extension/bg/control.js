@@ -16,8 +16,8 @@ const Control = (() => {
 		if (run.active) await Outreach.stopRun();
 		await ReplySync.pause();
 		await Admin.pause();
-		orLog("info", "Paused everything (popup).");
-		rsLog("info", "Paused everything (popup).");
+		orLog("info", "Paused everything (dashboard).");
+		rsLog("info", "Paused everything (dashboard).");
 		return { ok: true };
 	}
 
@@ -25,8 +25,8 @@ const Control = (() => {
 		const p = await getLocal(KEY, null);
 		await chrome.storage.local.remove(KEY);
 		if (!p) return { ok: true };
-		orLog("info", "Started again (popup).");
-		rsLog("info", "Started again (popup).");
+		orLog("info", "Started again (dashboard).");
+		rsLog("info", "Started again (dashboard).");
 		const out = { ok: true };
 		if (p.resume && p.resume.sync) ReplySync.ensureSyncTab("Start again").catch(e => console.warn("[ReplySync]", e));
 		if (p.resume && p.resume.outreach) {

@@ -83,6 +83,8 @@ const KEYS = [
 	"rtOutbox",
 	"rtActivity",
 	"rtMember",
+	"rtAccount",
+	"rtConnectAt",
 	"adList",
 	"adJob",
 	"adNote",
@@ -90,13 +92,27 @@ const KEYS = [
 	"acStatus",
 	"acWeek",
 ];
-const CFG_DEFAULTS = { tabName: "", scriptUrl: "", secretKey: "", useGoogleLogin: false };
+const CFG_DEFAULTS = { ...S.SETTINGS_DEFAULTS }; // the connection settings (storage.sync)
 let st = {};
 let cfg = { ...CFG_DEFAULTS };
 let counts = { today: 0, limit: 0 };
 let nextSyncAt = 0;
-const configured = () => !!(cfg.tabName && cfg.scriptUrl && cfg.secretKey);
+const configured = () => S.isConfigured(cfg);
 const orSettings = () => ({ ...S.DEFAULTS, ...(st.orSettings || {}) });
+
+// The sheet's header row, as last read (To send re-reads it at most once a minute, Outreach on
+// Start / Reload) — and which optional columns it doesn't have.
+function sheetHeader() {
+	const a = st.adRows;
+	const o = st.orSheet;
+	if (a && o) return (a.at || 0) >= (o.loadedAt || 0) ? a.header : o.header;
+	return (a && a.header) || (o && o.header) || null;
+}
+const missingCols = () => {
+	const h = sheetHeader();
+	return h ? S.missingColumns(h) : [];
+};
+const hasColumn = key => !missingCols().some(m => m.key === key);
 
 const renderers = [];
 const changeHooks = [];
@@ -202,6 +218,29 @@ $("pause").addEventListener("click", async () => {
 	else if (r.note) alert(r.note);
 });
 
+// The last failed request to the sheet → [title, line] for the banner. Settings → Test
+// connection explains each one in full.
+function sheetProblem(e) {
+	const a = e.account || "";
+	const more = "Settings → Test connection says what to do.";
+	switch (e.code) {
+		case "signin":
+			return ["Sign in to Google in this Chrome", "ReplyTrack reaches your sheet with your Google login."];
+		case "consent":
+			return ["Google needs your OK — click Connect in Settings", "Approve ReplyTrack with the Google account that has your sheet."];
+		case "sheets":
+			return ["Google Sheets permission missing — click Connect in Settings", "Tick the Google Sheets box on Google's screen."];
+		case "account":
+		case "noaccess":
+			return [`Wrong Google account${a ? ` (${a})` : ""} — check settings`, `Google used ${a ? `${a}, which` : "an account that"} can't open your sheet. ${more}`];
+		case "noedit":
+			return [`${a || "This Google account"} can't edit your sheet — check settings`, more];
+		case "deploy":
+			return ["The team web app isn't set up right — tell your team lead", "It must be deployed with “Execute as: User accessing the web app”."];
+	}
+	return ["Can't reach your sheet — check settings", e.error || ""];
+}
+
 // Shown only when you need to act.
 function renderBanner() {
 	const run = st.orRun || {};
@@ -211,7 +250,7 @@ function renderBanner() {
 	const todo = (st.orItems || []).filter(isTodo).length;
 	if (!run.active && run.stopKind === "cap" && todo && (run.stoppedAt || 0) >= startOfDay())
 		lines.push(["outreach", "", "Daily invite limit reached — press Continue tomorrow", "Continue in Outreach sends more today if you really want to.", "Outreach"]);
-	if (configured() && st.rtSheetError) lines.push(["settings", "err", "Can't reach your sheet — check settings", st.rtSheetError.error || "", "Settings"]);
+	if (configured() && st.rtSheetError) lines.push(["settings", "err", ...sheetProblem(st.rtSheetError), "Settings"]);
 	setHTML(
 		$("banner"),
 		lines.map(([go, cls, title, sub, action]) => `<a data-go="${go}" class="${cls}">${ICON.alert}<span><b>${esc(title)}</b><small>${esc(sub)}</small></span><span class="go label">${esc(action)} →</span></a>`).join("")

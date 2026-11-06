@@ -199,7 +199,7 @@
 					<div class="card stat" data-accent="blue"><div class="label">Last sync</div><div class="num word" id="rsLast">never</div><div class="cap" id="rsLastCap"></div></div>
 					<div class="card stat" data-accent="green"><div class="label">Replies today</div><div class="num" id="rsToday">0</div><div class="cap">captured today</div></div>
 				</div>
-				<div class="card" id="rsSummaryCard"><div id="rsSummary"></div></div>
+				<div class="card"><div id="rsSummary"></div></div>
 				<div class="card">
 					<div class="card-head"><h2>Latest replies</h2><span class="label" id="rsRecentCount"></span></div>
 					<div id="rsRecent"></div>
@@ -247,29 +247,60 @@
 				<div class="settings">
 					<div class="card" id="connCard">
 						<h2>Connection</h2>
-						<p>Your own sheet's web app, from Code.gs (README, Part 1).</p>
+						<p id="connIntro">Your Google Sheet — your copy of the team template.</p>
+						<div class="field team-only">
+							<div class="field-head"><label class="label" for="sheetUrl">Your sheet link</label><span class="hint">Copy it from the address bar while your sheet is open</span></div>
+							<input id="sheetUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://docs.google.com/spreadsheets/d/…/edit" />
+							<div class="hint hidden" id="templateHint">No sheet yet? <a class="link" id="templateLink" target="_blank" rel="noopener">Make your copy of the template</a></div>
+						</div>
 						<div class="field">
 							<div class="field-head"><label class="label" for="tabName">Tab name</label><span class="hint">Exactly as the tab at the bottom of your sheet</span></div>
 							<input id="tabName" type="text" autocomplete="off" spellcheck="false" placeholder="MY LEADS" />
 						</div>
-						<div class="field">
-							<div class="field-head"><label class="label" for="scriptUrl">Web app URL</label><span class="hint">Starts with https://script.google.com/, ends with /exec</span></div>
-							<input id="scriptUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" />
+						<div class="field team-only">
+							<span class="label">Google account</span>
+							<div class="actions" style="margin-top: 6px"><button class="btn secondary" id="connect" type="button">Connect Google account</button></div>
+							<div class="hint" id="accountLine"></div>
 						</div>
-						<div class="field">
-							<div class="field-head"><label class="label" for="secretKey">Secret key</label><span class="hint">Same as <code>SECRET_KEY</code> in your Code.gs</span></div>
-							<div class="inline">
-								<input id="secretKey" type="password" autocomplete="off" spellcheck="false" />
-								<button class="btn secondary" id="showKey" type="button">Show</button>
+						<details class="advanced" id="advanced">
+							<summary>Advanced</summary>
+							<div class="field team-only">
+								<div class="field-head">
+									<label class="label" for="teamUrl">Team web app URL</label><button class="link" id="teamUrlReset" type="button">Reset to default</button>
+								</div>
+								<input id="teamUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" />
+								<div class="hint">Built into ReplyTrack. Change it only if your team lead asks you to.</div>
 							</div>
-						</div>
-						<label class="check">
-							<input id="useGoogleLogin" type="checkbox" />
-							<span
-								>Send my Google login with each request
-								<span class="hint" style="display: block; margin: 2px 0 0">Only for a script deployed to “Anyone within your organisation”.</span></span
-							>
-						</label>
+							<label class="check">
+								<input id="ownMode" type="checkbox" />
+								<span
+									>Use my sheet's own script instead
+									<span class="hint" style="display: block; margin: 2px 0 0"
+										>For a sheet with Code.gs inside it that you deployed yourself (“Execute as: Me”), e.g. a sheet synced to a main sheet.</span
+									></span
+								>
+							</label>
+							<div class="own-only">
+								<div class="field">
+									<div class="field-head"><label class="label" for="scriptUrl">Your script's web app URL</label><span class="hint">Starts with https://script.google.com/, ends with /exec</span></div>
+									<input id="scriptUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" />
+								</div>
+								<div class="field">
+									<div class="field-head"><label class="label" for="secretKey">Secret key</label><span class="hint">Same as <code>SECRET_KEY</code> in your Code.gs</span></div>
+									<div class="inline">
+										<input id="secretKey" type="password" autocomplete="off" spellcheck="false" />
+										<button class="btn secondary" id="showKey" type="button">Show</button>
+									</div>
+								</div>
+								<label class="check">
+									<input id="useGoogleLogin" type="checkbox" />
+									<span
+										>Send my Google login with each request
+										<span class="hint" style="display: block; margin: 2px 0 0">Only for a script deployed to “Anyone within your organisation”.</span></span
+									>
+								</label>
+							</div>
+						</details>
 						<div class="conn-actions">
 							<div class="actions">
 								<button class="btn primary" id="save">Save</button>
@@ -357,6 +388,7 @@
 			<button class="btn sm primary" id="saveBarSave">Save</button>
 		</div>
 
+		<script src="team-config.js"></script>
 		<script src="shared.js"></script>
 		<script src="dash/core.js"></script>
 		<script src="dash/overview.js"></script>

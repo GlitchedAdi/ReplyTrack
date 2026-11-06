@@ -233,5 +233,5 @@ const LI = (() => {
 	}
 	const isWorker = tabId => tabId != null && tabId === workerTabId;
 
-	return { Fatal, SIGNED_OUT, isLogin, call, me, readThread, begin, end, adopt, isWorker, rawBody, closeWorkerWindowIfIdle };
+	return { Fatal, call, me, readThread, begin, end, adopt, isWorker, rawBody, closeWorkerWindowIfIdle };
 })();

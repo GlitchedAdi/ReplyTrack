@@ -467,12 +467,12 @@ const ReplySync = (() => {
 
 	async function doEnsureSyncTab(reason) {
 		if (await isStopped()) {
-			log(`(${reason}) Sync is stopped — not opening or reloading the LinkedIn tab. Press "Start sync" in the popup to turn it back on.`);
+			log(`(${reason}) Sync is stopped — not opening or reloading the LinkedIn tab. Press "Start sync" in the dashboard (Replies) to turn it back on.`);
 			return null;
 		}
 		const settings = await Sheet.settings();
 		if (!Sheet.configured(settings)) {
-			log(`(${reason}) Not set up yet — enter your tab name, web app URL and secret key in the extension's settings.`);
+			log(`(${reason}) Not set up yet — connect your sheet in the extension's Settings.`);
 			return null;
 		}
 		if (await isSyncRunning()) {
@@ -531,7 +531,7 @@ const ReplySync = (() => {
 	// content.js asks this on every messaging page load. Only the pinned sync tab
 	// syncs; a messaging tab you open yourself is never clicked through.
 	async function shouldSync(sender) {
-		if (await isStopped()) return { ok: false, stopped: true, reason: (await Control.isPaused()) ? "everything is paused (press “Start again” in the popup)" : 'sync is stopped (press "Start sync" in the extension popup)' };
+		if (await isStopped()) return { ok: false, stopped: true, reason: (await Control.isPaused()) ? "everything is paused (press “Start again” in the dashboard)" : 'sync is stopped (press "Start sync" in the dashboard, Replies tab)' };
 		const settings = await Sheet.settings();
 		if (!Sheet.configured(settings)) return { ok: false, reason: "not set up (open the extension settings)" };
 		const tab = sender.tab;
@@ -755,7 +755,7 @@ const ReplySync = (() => {
 				await chrome.storage.local.set({ syncStopped: true });
 				await haltRunning();
 				await setStatus({ syncing: false, progress: "", lastError: "", waitingFor: "", lastSummary: 'Sync stopped. Press "Start sync" to turn it back on.' });
-				log("Sync stopped from the popup — automatic syncing is paused until Start sync is pressed.");
+				log("Sync stopped from the dashboard — automatic syncing is paused until Start sync is pressed.");
 				return { ok: true };
 			}
 
@@ -763,7 +763,7 @@ const ReplySync = (() => {
 			case "startSync": {
 				await chrome.storage.local.remove("syncStopped");
 				await setStatus({ lastSummary: "Sync started." });
-				log("Sync started from the popup — automatic syncing is back on.");
+				log("Sync started from the dashboard — automatic syncing is back on.");
 				await ensureAlarm();
 				const tab = await ensureSyncTab("Start sync button");
 				return { ok: true, started: !!tab };

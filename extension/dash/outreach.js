@@ -134,19 +134,22 @@ onRender(() => {
 			.join("")
 	);
 
-	// Accepted check
+	// Accepted check (off without a Sent Date or a Response / Notes column)
 	const ac = st.acStatus || {};
-	$("acNow").disabled = !!ac.running || paused || !configured();
+	const acOff = missingCols().filter(m => m.key === "sentDate" || m.key === "notes");
+	$("acNow").disabled = !!ac.running || paused || !configured() || acOff.length > 0;
 	setHTML(
 		$("acState"),
-		ac.running
-			? "Checking…"
-			: [
-					ac.lastRunAt ? `Last check ${esc(timeOf(ac.lastRunAt))}: ${esc(ac.summary || "")}` : '<span class="muted">Not checked yet.</span>',
-					ac.error && (ac.lastTryAt || 0) > (ac.lastRunAt || 0) ? `<span class="err">Didn't finish: ${esc(ac.error)}</span>` : "",
-				]
-					.filter(Boolean)
-					.join("<br>")
+		acOff.length
+			? `<span class="muted">Off — your sheet has no ${acOff.map(m => `“${esc(m.name)}”`).join(" or ")} column.</span>`
+			: ac.running
+				? "Checking…"
+				: [
+						ac.lastRunAt ? `Last check ${esc(timeOf(ac.lastRunAt))}: ${esc(ac.summary || "")}` : '<span class="muted">Not checked yet.</span>',
+						ac.error && (ac.lastTryAt || 0) > (ac.lastRunAt || 0) ? `<span class="err">Didn't finish: ${esc(ac.error)}</span>` : "",
+					]
+						.filter(Boolean)
+						.join("<br>")
 	);
 });
 

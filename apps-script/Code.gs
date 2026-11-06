@@ -1,13 +1,23 @@
 /**
  * ReplyTrack — Google Apps Script web app
  *
- * Every team member puts this script in THEIR OWN Google Sheet (Extensions → Apps Script)
- * and deploys it as their own web app. The Chrome extension only ever talks to that one
- * sheet, and only to the tab named in its settings.
+ * One Code.gs, two ways to use it. Which one is decided by WHERE the code lives:
+ *
+ *   TEAM WEB APP — the code is in its own Apps Script project (script.google.com → New project).
+ *     The team lead deploys it ONCE: "Execute as: User accessing the web app",
+ *     "Who has access: Anyone with Google account". Each request runs as the team member who
+ *     sends it (the extension sends their Google login) and opens THEIR sheet by the ID the
+ *     extension sends — so it can only ever touch sheets that person can edit anyway.
+ *     No secret key. If it finds it is NOT running as the person calling it (deployed with
+ *     "Execute as: Me" by mistake), it refuses every request.
+ *
+ *   OWN SCRIPT — the code is inside one sheet (Extensions → Apps Script), deployed by that
+ *     sheet's owner: "Execute as: Me", "Who has access: Anyone". It only ever touches that
+ *     sheet, and every request needs the SECRET_KEY below.
  *
  * Every request is a POST with a JSON body:
- *   { "key": "<SECRET_KEY>", "tab": "MY LEADS", "action": "...", ... }
- * A request without the right key is rejected before anything is read or written.
+ *   team web app: { "sheet": "<spreadsheet id>", "tab": "MY LEADS", "action": "...", ... }
+ *   own script:   { "key": "<SECRET_KEY>",       "tab": "MY LEADS", "action": "...", ... }
  *
  * Actions
  *   ping                                         → checks the tab, the columns, the dropdown, write access
@@ -21,9 +31,15 @@
  *                                                  conversation: clears Admin Reply and Response / Notes
  *
  * Answer (JSON): { "ok": true, ... }  or  { "ok": false, "error": "..." }
+ *   The team web app adds "account": the Google account the request ran as.
  *   errors: "wrong key" | "set SECRET_KEY in Code.gs" | "tab not found" | "missing column: <name>"
  *         | "profile not in tab" | "cell full" | "admin reply changed — not cleared"
- *         | "bad request" | "busy, try again" | "error: ..."
+ *         | "no \"Admin Reply\" column" | "bad request" | "busy, try again" | "error: ..."
+ *   team web app only: "no sheet link" | "no access to sheet" | "no edit access to sheet: ..."
+ *         | "not running as you — ..." (the deployment isn't "Execute as: User accessing the web app")
+ *
+ * Columns: LinkedIn Profile, Personalized Message and Outreach Status are required. Sent Date,
+ * Response / Notes and Admin Reply are optional — without one, only what needs it is off.
  *
  * Safety rules — enforced here, whatever the extension asks:
  *   - Only these columns are ever written: Outreach Status, Sent Date, Response / Notes, and
@@ -42,20 +58,25 @@
 // SETTINGS
 // ============================================================================
 
-// The shared secret key. Make up a long random one (16+ characters, e.g. from a password
-// generator), paste it between the quotes, and enter the SAME key in the extension's settings.
-// While this still says CHANGE-ME, every request is rejected.
+// OWN SCRIPT only (the team web app ignores it). Make up a long random key (16+ characters,
+// e.g. from a password generator), paste it between the quotes, and enter the SAME key in the
+// extension's settings. While this still says CHANGE-ME, every request is rejected.
 var SECRET_KEY = 'CHANGE-ME';
+
+// TEAM WEB APP only: the template's "Make a copy" link. The page team members see when they
+// open the web app shows a "Make a copy of the sheet" button with it. '' = no button.
+var TEMPLATE_COPY_URL = 'https://docs.google.com/spreadsheets/d/18kqx2r4G5340pEwYITB-Pd1Il6wJSw9xuYwxI5eyans/copy';
 
 // Headers in ROW 1 of the tab. Matching ignores upper/lower case and extra spaces.
 var COLUMNS = {
-  profile: 'LinkedIn Profile',      // read — https://www.linkedin.com/in/... links
-  message: 'Personalized Message',  // read — the connection note
-  status: 'Outreach Status',        // write — "Sent", "Replied" (a dropdown)
-  sentDate: 'Sent Date',            // write
-  notes: 'Response / Notes',        // write
-  admin: 'Admin Reply',             // read — cleared only after a verified send
+  profile: 'LinkedIn Profile',      // read — https://www.linkedin.com/in/... links      (required)
+  message: 'Personalized Message',  // read — the connection note                      (required)
+  status: 'Outreach Status',        // write — "Sent", "Replied" (a dropdown)          (required)
+  sentDate: 'Sent Date',            // write                                           (optional)
+  notes: 'Response / Notes',        // write                                           (optional)
+  admin: 'Admin Reply',             // read — cleared only after a verified send       (optional)
 };
+var REQUIRED = ['profile', 'message', 'status'];
 // The only columns this script may ever write to.
 var WRITABLE = ['status', 'sentDate', 'notes', 'admin'];
 
@@ -80,14 +101,66 @@ var ENTRY_RE = /^\[(\d{1,2}) ([A-Za-z]{3,9})\.? (\d{4}), (\d{1,2}):(\d{2}) ?([AP
 var ENTRY_START_RE = /\n[ \t]*\n(?=\[\d{1,2} [A-Za-z]{3,9}\.? \d{4}, \d{1,2}:\d{2} ?[AP]\.?M\.?\])/i;
 // A formula that fills a whole column from one cell. Writing below it would break it.
 var SPILL_RE = /^=\s*(ARRAYFORMULA|IMPORTRANGE|QUERY|FILTER|SORTN?|UNIQUE|FLATTEN|MAP|BYROW|BYCOL|SEQUENCE|TRANSPOSE|IMPORTDATA|IMPORTHTML|IMPORTXML|IMPORTFEED)\s*\(/i;
+// A Google Sheets id, as the extension sends it.
+var SHEET_ID_RE = /^[A-Za-z0-9_-]{20,}$/;
+// What Google says when this account may open a file but not change it.
+var NO_EDIT_RE = /permission|not have access|edit access|access denied|read[- ]only/i;
+
+// ----------------------------------------------------------------------------
+// Which set-up is this?
+// ----------------------------------------------------------------------------
+
+// The spreadsheet this code lives in, or null in its own project (the team web app).
+function boundSpreadsheet_() {
+  try {
+    return SpreadsheetApp.getActiveSpreadsheet();
+  } catch (err) {
+    return null;
+  }
+}
+
+// Team web app: the Google account this request runs as — only when that is the person who
+// sent it ("Execute as: User accessing the web app"). '' otherwise.
+function teamUser_() {
+  var me = '';
+  var caller = '';
+  try {
+    me = Session.getEffectiveUser().getEmail() || '';
+  } catch (err) {}
+  try {
+    caller = Session.getActiveUser().getEmail() || '';
+  } catch (err) {}
+  return me && caller && me.toLowerCase() === caller.toLowerCase() ? me : '';
+}
+
+var NOT_AS_YOU = 'not running as you — deploy the team web app with "Execute as: User accessing the web app"';
+
+// Google's permission screen lets people leave "Google Sheets" unticked. Then nothing can be read
+// or written, so the team web app says so instead of "no access to sheet".
+var SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
+var NO_SHEETS_PERMISSION = 'no sheets permission — tick "Google Sheets" on Google\'s permission screen';
+var NO_SCOPE_RE = /required permissions|permissions are not sufficient|permission to call/i;
+
+// '' when this person gave the Google Sheets permission; otherwise Google's link to give it
+// ('missing' when Google has no link).
+function sheetsPermissionMissing_() {
+  try {
+    var info = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL, [SHEETS_SCOPE]);
+    if (info.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED) return info.getAuthorizationUrl() || 'missing';
+  } catch (err) {}
+  return '';
+}
 
 // ----------------------------------------------------------------------------
 // Web app entry points
 // ----------------------------------------------------------------------------
 
-// Opening the web app URL in a browser shows this — handy to check the deployment. No data.
+// Opening the web app URL in a browser. Own script: a one-line check, no data. Team web app:
+// the page a team member sees after approving Google's permission screen.
 function doGet() {
-  return ContentService.createTextOutput('ok — ReplyTrack web app is running');
+  if (boundSpreadsheet_()) return ContentService.createTextOutput('ok — ReplyTrack web app is running');
+  var email = teamUser_();
+  return connectedPage_(email, email ? sheetsPermissionMissing_() : '');
 }
 
 var ACTIONS = {
@@ -108,36 +181,67 @@ function doPost(e) {
   }
   if (!data || typeof data !== 'object') return out_({ ok: false, error: 'bad request' });
 
-  var keyProblem = checkKey_(data.key);
-  if (keyProblem) {
-    console.warn('[ReplySync] Request rejected: %s', keyProblem);
-    return out_({ ok: false, error: keyProblem });
+  var bound = boundSpreadsheet_();
+  var account = '';
+  if (bound) {
+    var keyProblem = checkKey_(data.key);
+    if (keyProblem) {
+      console.warn('[ReplySync] Request rejected: %s', keyProblem);
+      return out_({ ok: false, error: keyProblem });
+    }
+  } else {
+    account = teamUser_();
+    if (!account) {
+      console.warn('[ReplySync] Request rejected: %s', NOT_AS_YOU);
+      return out_({ ok: false, error: NOT_AS_YOU });
+    }
   }
+  var answer = function (obj) {
+    if (account) obj.account = account;
+    return out_(obj);
+  };
   var action = ACTIONS[data.action];
-  if (!action) return out_({ ok: false, error: 'bad request' });
+  if (!action) return answer({ ok: false, error: 'bad request' });
 
-  // Writes one at a time, so a reply and a status update can't collide.
+  var ss = bound;
+  if (!bound) {
+    var id = String(data.sheet || '').trim();
+    if (!SHEET_ID_RE.test(id)) return answer({ ok: false, error: 'no sheet link' });
+    if (sheetsPermissionMissing_()) return answer({ ok: false, error: NO_SHEETS_PERMISSION });
+    try {
+      ss = SpreadsheetApp.openById(id);
+    } catch (err) {
+      var why = err && err.message ? err.message : String(err);
+      console.warn('[ReplySync] %s could not open the sheet: %s', account, why);
+      return answer({ ok: false, error: NO_SCOPE_RE.test(why) ? NO_SHEETS_PERMISSION : 'no access to sheet' });
+    }
+  }
+
+  // Writes one at a time, so a reply and a status update can't collide. The team web app
+  // queues per person (each has their own sheet); an own script for the whole script.
   var lock = null;
   if (action.write) {
-    lock = LockService.getScriptLock();
+    lock = bound ? LockService.getScriptLock() : LockService.getUserLock();
     try {
       lock.waitLock(LOCK_WAIT_MS);
     } catch (err) {
-      return out_({ ok: false, error: 'busy, try again' });
+      return answer({ ok: false, error: 'busy, try again' });
     }
   }
   try {
-    var ctx = open_(data.tab);
-    if (typeof ctx === 'string') return out_({ ok: false, error: ctx });
+    var ctx = open_(ss, data.tab);
+    if (typeof ctx === 'string') return answer({ ok: false, error: ctx });
     var result = action.run(ctx, data);
     if (action.write) {
       SpreadsheetApp.flush();
       console.log('%s %s %s -> %s', prefix_(data.action), data.action, data.profileUrl || '', JSON.stringify(result));
     }
-    return out_(result);
+    return answer(result);
   } catch (err) {
+    var msg = err && err.message ? err.message : String(err);
     console.error(prefix_(data.action) + ' ' + (err && err.stack ? err.stack : err));
-    return out_({ ok: false, error: 'error: ' + (err && err.message ? err.message : err) });
+    if (!bound && action.write && NO_EDIT_RE.test(msg)) return answer({ ok: false, error: 'no edit access to sheet: ' + msg });
+    return answer({ ok: false, error: 'error: ' + msg });
   } finally {
     if (lock) lock.releaseLock();
   }
@@ -159,23 +263,29 @@ function prefix_(action) {
 // The tab and its columns
 // ----------------------------------------------------------------------------
 
-// -> { sheet, headers, col (1-based column numbers), lastRow, tz, cache } or an error string.
-function open_(tabName) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+// -> { sheet, headers, col (1-based column numbers; 0 = optional column not there), missing
+//    (names of the optional columns not there), lastRow, tz, cache } or an error string.
+function open_(ss, tabName) {
   var sheet = findTab_(ss, tabName);
   if (!sheet) return 'tab not found';
   var lastCol = sheet.getLastColumn();
   var headers = lastCol ? sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0] : [];
   var col = {};
+  var missing = [];
   for (var k in COLUMNS) {
     var i = findColumn_(headers, COLUMNS[k]);
-    if (i < 0) return 'missing column: ' + COLUMNS[k];
-    col[k] = i + 1;
+    if (i >= 0) col[k] = i + 1;
+    else if (REQUIRED.indexOf(k) >= 0) return 'missing column: ' + COLUMNS[k];
+    else {
+      col[k] = 0;
+      missing.push(COLUMNS[k]);
+    }
   }
   return {
     sheet: sheet,
     headers: headers,
     col: col,
+    missing: missing,
     lastRow: sheet.getLastRow(),
     tz: ss.getSpreadsheetTimeZone() || DEFAULT_TIME_ZONE,
     cache: {},
@@ -185,16 +295,18 @@ function open_(tabName) {
 function ping_(ctx) {
   var problems = [];
   WRITABLE.forEach(function (k) {
-    if (spillColumn_(ctx, k)) problems.push('"' + COLUMNS[k] + '" is filled by a formula, so it is never written');
+    if (ctx.col[k] && spillColumn_(ctx, k)) problems.push('"' + COLUMNS[k] + '" is filled by a formula, so it is never written');
   });
   var edit = editProblem_(ctx);
   if (edit) problems.push(edit);
+  var leads = profiles_(ctx).filter(function (u) { return String(u || '').trim(); }).length;
   return {
     ok: true,
     tab: ctx.sheet.getName(),
-    rows: Math.max(0, ctx.lastRow - 1),
+    rows: leads, // rows with a LinkedIn Profile
     timeZone: ctx.tz,
     statusValues: statusList_(ctx, 0) || [],
+    missing: ctx.missing,
     problems: problems,
   };
 }
@@ -208,10 +320,10 @@ function read_(ctx) {
   if (n) {
     rows = ctx.sheet.getRange(2, 1, n, ctx.headers.length).getDisplayValues();
     var urls = profiles_(ctx);
-    var dates = ctx.sheet.getRange(2, ctx.col.sentDate, n, 1).getValues();
+    var dates = ctx.col.sentDate ? ctx.sheet.getRange(2, ctx.col.sentDate, n, 1).getValues() : null;
     for (var i = 0; i < n; i++) {
       rows[i][ctx.col.profile - 1] = urls[i];
-      var d = dates[i][0];
+      var d = dates ? dates[i][0] : null;
       sentMs.push(d instanceof Date && !isNaN(d.getTime()) ? d.getTime() : null);
     }
   }
@@ -224,6 +336,7 @@ function read_(ctx) {
     rows: rows,
     sentMs: sentMs,
     statusValues: statusList_(ctx, 0) || [],
+    missing: ctx.missing,
   };
 }
 
@@ -233,7 +346,7 @@ function read_(ctx) {
 
 // A connection request was sent (now, earlier, or found already pending): "Sent" + Sent Date,
 // in every row of that person whose Outreach Status is still empty or "Not Started". Any
-// other status is never touched. Without sentAt the Sent Date is left empty.
+// other status is never touched. Without sentAt (or without a Sent Date column) only the status.
 function markSent_(ctx, data) {
   var rows = rowsFor_(ctx, data.profileUrl);
   if (!rows.length) return { ok: false, error: 'profile not in tab' };
@@ -251,7 +364,7 @@ function markSent_(ctx, data) {
     statusCell.setValue(value);
     written.push(row);
 
-    if (!when) return; // e.g. a request found already pending: date unknown
+    if (!when || !ctx.col.sentDate) return; // date unknown (e.g. found already pending), or no Sent Date column
     var dateCell = ctx.sheet.getRange(row, ctx.col.sentDate);
     var dateWhy = blocked_(ctx, row, 'sentDate');
     if (dateWhy) skip_(skipped, row, dateWhy, '[Outreach]');
@@ -262,8 +375,9 @@ function markSent_(ctx, data) {
 }
 
 // They accepted: "Accepted but not replied" — only where Outreach Status is "Sent" and
-// Response / Notes is empty.
+// Response / Notes is empty. Off without a Response / Notes column.
 function markAccepted_(ctx, data) {
+  if (!ctx.col.notes) return { ok: true, written: [], skipped: [], off: 'no "' + COLUMNS.notes + '" column' };
   var rows = rowsFor_(ctx, data.profileUrl);
   if (!rows.length) return { ok: false, error: 'profile not in tab' };
   var written = [];
@@ -284,13 +398,18 @@ function markAccepted_(ctx, data) {
 // Their messages, each as "[27 Oct 2026, 11:42 PM] text", oldest first, never twice.
 // Empty cell or exactly "Accepted but not replied" → replaced. Anything else → kept exactly
 // as it is (formatting too), and the new messages are added below it.
+// Without a Response / Notes column only the status changes ("Sent" → "Replied").
 function addReplies_(ctx, data) {
   var rows = rowsFor_(ctx, data.profileUrl);
   if (!rows.length) return { ok: false, error: 'profile not in tab' };
+  var skipped = [];
+  if (!ctx.col.notes) {
+    rows.forEach(function (row) { markReplied_(ctx, row, skipped); });
+    return { ok: true, written: rows, skipped: skipped, statusOnly: true };
+  }
   var replies = cleanReplies_(data.replies, data.sentAt);
   var now = new Date();
   var plans = [];
-  var skipped = [];
 
   // Work out every change first; write only when all of them are fine.
   for (var i = 0; i < rows.length; i++) {
@@ -318,22 +437,28 @@ function addReplies_(ctx, data) {
     if (p.replace) setText_(p.cell, p.block);
     else appendText_(p.cell, p.rich, p.shown, p.block);
     written.push(p.row);
-    // They replied: "Sent" → "Replied". Any other status is never touched.
-    var statusCell = ctx.sheet.getRange(p.row, ctx.col.status);
-    if (norm_(statusCell.getDisplayValue()) !== norm_(SENT)) return;
-    var why = blocked_(ctx, p.row, 'status');
-    var value = allowed_(ctx, p.row, REPLIED);
-    if (why) skip_(skipped, p.row, why, '[ReplySync]');
-    else if (!value) skip_(skipped, p.row, '"' + REPLIED + '" is not in the Outreach Status dropdown', '[ReplySync]');
-    else statusCell.setValue(value);
+    markReplied_(ctx, p.row, skipped);
   });
   return { ok: true, written: written, skipped: skipped };
+}
+
+// They replied: "Sent" → "Replied". Any other status is never touched.
+function markReplied_(ctx, row, skipped) {
+  var statusCell = ctx.sheet.getRange(row, ctx.col.status);
+  if (norm_(statusCell.getDisplayValue()) !== norm_(SENT)) return;
+  var why = blocked_(ctx, row, 'status');
+  var value = allowed_(ctx, row, REPLIED);
+  if (why) skip_(skipped, row, why, '[ReplySync]');
+  else if (!value) skip_(skipped, row, '"' + REPLIED + '" is not in the Outreach Status dropdown', '[ReplySync]');
+  else statusCell.setValue(value);
 }
 
 // The Admin Reply was seen in the LinkedIn conversation: clear Admin Reply and Response / Notes
 // in that row (contents only — formatting and dropdowns stay). Only if the Admin Reply is still
 // the text that was sent. Replies added to Response / Notes after the extension read it are kept.
+// Without a Response / Notes column only the Admin Reply is cleared.
 function clearAdmin_(ctx, data) {
+  if (!ctx.col.admin) return { ok: false, error: 'no "' + COLUMNS.admin + '" column' };
   var target = profileKey_(data.profileUrl);
   var wanted = norm_(data.adminText);
   if (!target || !wanted) return { ok: false, error: 'bad request' };
@@ -350,12 +475,13 @@ function clearAdmin_(ctx, data) {
     if (found.length !== 1) return { ok: false, error: found.length ? 'several rows match — not cleared' : 'admin reply changed — not cleared' };
     row = found[0];
   }
-  var why = blocked_(ctx, row, 'admin') || blocked_(ctx, row, 'notes');
+  var why = blocked_(ctx, row, 'admin') || (ctx.col.notes ? blocked_(ctx, row, 'notes') : '');
   if (why) {
     console.warn('[ReplySync] Row %s not cleared: %s', row, why);
     return { ok: false, error: why };
   }
   ctx.sheet.getRange(row, ctx.col.admin).clearContent();
+  if (!ctx.col.notes) return { ok: true, row: row, notes: 'no column' };
 
   var notes = ctx.sheet.getRange(row, ctx.col.notes);
   var now = lines_(notes.getDisplayValue());
@@ -383,6 +509,7 @@ function clearAdmin_(ctx, data) {
 // '' when this cell may be written, else the reason it may not.
 function blocked_(ctx, row, key) {
   if (WRITABLE.indexOf(key) < 0) return '"' + COLUMNS[key] + '" is read-only';
+  if (!ctx.col[key]) return 'no "' + COLUMNS[key] + '" column';
   if (spillColumn_(ctx, key)) return '"' + COLUMNS[key] + '" is filled by a formula';
   if (ctx.sheet.getRange(row, ctx.col[key]).getFormula()) return '"' + COLUMNS[key] + '" has a formula in row ' + row;
   return '';
@@ -404,6 +531,7 @@ function spillColumn_(ctx, key) {
 }
 
 // The Outreach Status dropdown for one row (its own rule, else the column's first rule).
+// Row 2 is always looked at, so a new, empty copy of the template still shows its dropdown.
 function statusList_(ctx, row) {
   if (row) {
     var own = listOf_(ctx.sheet.getRange(row, ctx.col.status).getDataValidation());
@@ -411,10 +539,8 @@ function statusList_(ctx, row) {
   }
   if (!('statusList' in ctx.cache)) {
     var found = null;
-    if (ctx.lastRow >= 2) {
-      var rules = ctx.sheet.getRange(2, ctx.col.status, ctx.lastRow - 1, 1).getDataValidations();
-      for (var i = 0; i < rules.length && !found; i++) found = listOf_(rules[i][0]);
-    }
+    var rules = ctx.sheet.getRange(2, ctx.col.status, Math.max(1, ctx.lastRow - 1), 1).getDataValidations();
+    for (var i = 0; i < rules.length && !found; i++) found = listOf_(rules[i][0]);
     ctx.cache.statusList = found;
   }
   return ctx.cache.statusList;
@@ -453,7 +579,7 @@ function editProblem_(ctx) {
       var rg = p.getRange();
       for (var w = 0; w < WRITABLE.length; w++) {
         var c = ctx.col[WRITABLE[w]];
-        if (rg.getColumn() <= c && c <= rg.getLastColumn()) return 'cells in "' + COLUMNS[WRITABLE[w]] + '" are protected and this account can\'t edit them';
+        if (c && rg.getColumn() <= c && c <= rg.getLastColumn()) return 'cells in "' + COLUMNS[WRITABLE[w]] + '" are protected and this account can\'t edit them';
       }
     }
   } catch (err) {
@@ -601,16 +727,14 @@ function headerKey_(s) {
   return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-// -> [{ text, sentAt }] ; sentAt is null when missing or not a sensible time.
+// replies: ["text", …], times: [ms, …] (same order) -> [{ text, sentAt }] ; sentAt is null
+// when missing or not a sensible time.
 function cleanReplies_(list, times) {
   if (!Array.isArray(list)) return [];
   var out = [];
   list.forEach(function (r, i) {
-    var isObject = r !== null && typeof r === 'object';
-    var raw = isObject ? r.text : r;
-    var t = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-    if (!t) return;
-    out.push({ text: t, sentAt: validTime_(isObject ? r.sentAt : Array.isArray(times) ? times[i] : NaN) });
+    var t = String(r == null ? '' : r).replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (t) out.push({ text: t, sentAt: validTime_(Array.isArray(times) ? times[i] : NaN) });
   });
   return out;
 }
@@ -634,24 +758,99 @@ function out_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
+function escapeHtml_(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// ----------------------------------------------------------------------------
+// The page a team member sees when they open the team web app (after Google's permission
+// screen, the first time). Shows the Google account ReplyTrack will use.
+// ----------------------------------------------------------------------------
+function connectedPage_(email, missing) {
+  var body;
+  var copy = /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[\w-]+\/copy$/.test(TEMPLATE_COPY_URL) ? TEMPLATE_COPY_URL : '';
+  if (email && missing) {
+    // Approved, but without "Google Sheets" ticked.
+    body =
+      '<div class="mark warn">!</div>' +
+      '<h1>One more step</h1>' +
+      '<p>ReplyTrack is approved for</p>' +
+      '<p class="who">' + escapeHtml_(email) + '</p>' +
+      '<p>…but not for your Google Sheets: on Google’s screen, the box next to ' +
+      '<b>“See, edit, create, and delete all your Google Sheets spreadsheets”</b> wasn’t ticked.</p>' +
+      (/^https:\/\//.test(missing)
+        ? '<a class="btn" href="' + escapeHtml_(missing) + '" target="_blank" rel="noopener">Give permission</a>' +
+          '<p>Tick that box, click <b>Continue</b>, then open this page again.</p>'
+        : '') +
+      '<div class="note"><b>Google doesn’t ask again?</b> Open myaccount.google.com/connections, remove this app, ' +
+      'then open this page again and tick every box.</div>';
+  } else if (email) {
+    body =
+      '<div class="mark ok">✓</div>' +
+      '<h1>You’re connected</h1>' +
+      '<p>ReplyTrack is approved for</p>' +
+      '<p class="who">' + escapeHtml_(email) + '</p>' +
+      (copy
+        ? '<p>No sheet yet? Make your own copy, then paste its link in ReplyTrack → Settings → <b>Your sheet link</b>.</p>' +
+          '<a class="btn" href="' + escapeHtml_(copy) + '" target="_blank" rel="noopener">Make a copy of the sheet</a>'
+        : '') +
+      '<p>In ReplyTrack’s Settings, click <b>Save</b> (or <b>Test connection</b>) — ' +
+      'it shows which Google account ReplyTrack uses. Then you can close this tab.</p>' +
+      '<div class="note"><b>Is Chrome signed in to more than one Google account?</b> Google uses the first one you signed in with. ' +
+      'If Test connection names the wrong account: sign out of all Google accounts and sign in first with the one that has your ' +
+      'sheet, or use a Chrome profile with only that account. Then open this page again.</div>';
+  } else {
+    body =
+      '<div class="mark bad">!</div>' +
+      '<h1>This web app isn’t set up right</h1>' +
+      '<p>It must be deployed with <b>Execute as: User accessing the web app</b>. Please tell your team lead.</p>';
+  }
+  var html =
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">' +
+    '<style>' +
+    'html,body{margin:0;background:#050505;color:#fff;font:15px/1.55 Montserrat,system-ui,-apple-system,"Segoe UI",sans-serif}' +
+    '.card{max-width:460px;margin:12vh auto 24px;padding:32px 28px;background:#111113;border:1px solid #222;border-radius:16px;text-align:center}' +
+    '.mark{width:52px;height:52px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700}' +
+    '.ok{background:rgba(52,200,138,.14);color:#34c88a}.bad{background:rgba(239,68,68,.14);color:#ef4444}.warn{background:rgba(245,166,35,.14);color:#f5a623}' +
+    'h1{margin:0 0 12px;font-size:24px;letter-spacing:-.01em}p{margin:6px 0;color:#c8c8c8}' +
+    '.who{color:#fff;font-weight:600;font-size:17px;margin:4px 0 16px;word-break:break-all}' +
+    '.btn{display:inline-block;margin:12px 0 18px;padding:11px 22px;border-radius:999px;background:#fff;color:#000;font-weight:700;text-decoration:none}' +
+    '.btn:hover{background:#e6e6e6}' +
+    '.note{margin-top:22px;padding:14px 16px;border:1px solid #2e2e33;border-radius:10px;background:#18181b;color:#8a8a8a;font-size:13px;text-align:left}' +
+    '.note b{color:#fff}' +
+    '</style></head><body><div class="card">' + body + '</div></body></html>';
+  return HtmlService.createHtmlOutput(html)
+    .setTitle(!email ? 'ReplyTrack — not set up' : missing ? 'ReplyTrack — one more step' : 'ReplyTrack — connected')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
 // ----------------------------------------------------------------------------
 // Run this once from the editor (select "testSetup" → Run) to check your set-up.
 // Results appear in the "Execution log" at the bottom of the editor. Read-only.
 // ----------------------------------------------------------------------------
 function testSetup() {
+  var ss = boundSpreadsheet_();
+  if (!ss) {
+    console.log('This is the TEAM WEB APP (its own project) — nothing to test here. Each member checks their own sheet with ReplyTrack → Settings → Test connection.');
+    return;
+  }
   var keyProblem = checkKey_(SECRET_KEY);
-  console.log('Secret key: %s', keyProblem ? 'NOT READY — ' + keyProblem : 'set');
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  console.log('This is an OWN SCRIPT (inside this sheet). Secret key: %s', keyProblem ? 'NOT READY — ' + keyProblem : 'set');
   console.log('Time zone used for dates and reply times: %s', ss.getSpreadsheetTimeZone() || DEFAULT_TIME_ZONE + ' (the spreadsheet has none set)');
   ss.getSheets().forEach(function (sheet) {
-    var ctx = open_(sheet.getName());
+    var ctx = open_(ss, sheet.getName());
     if (typeof ctx === 'string') {
       console.log('Tab "%s": not usable — %s', sheet.getName(), ctx);
       return;
     }
     var p = ping_(ctx);
-    console.log('Tab "%s": %s rows, all columns found. Outreach Status dropdown: %s%s',
-      sheet.getName(), p.rows, p.statusValues.join(' | ') || 'NONE',
+    console.log('Tab "%s": %s rows with a LinkedIn Profile, %s. Outreach Status dropdown: %s%s',
+      sheet.getName(), p.rows,
+      p.missing.length ? 'no ' + p.missing.join(', no ') + ' column (optional)' : 'all columns found',
+      p.statusValues.join(' | ') || 'NONE',
       p.problems.length ? ' | Problems: ' + p.problems.join('; ') : '');
   });
 }

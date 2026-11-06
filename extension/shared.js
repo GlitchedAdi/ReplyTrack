@@ -1,5 +1,6 @@
 // Shared helpers — loaded by the pages, the popup and the service worker.
-// Pure functions: the sheet's columns, profile-URL detection, the note, defaults.
+// Pure functions: the sheet's columns, the connection settings, profile-URL detection, the
+// note, defaults.
 (function (root) {
 	const NOTE_LIMIT = 300; // LinkedIn Premium: notes up to 300 characters
 
@@ -121,6 +122,60 @@
 	const norm = s => String(s || "").replace(/\s+/g, " ").trim().toLowerCase();
 	const findCol = (header, name) => (norm(name) ? header.findIndex(h => norm(h) === norm(name)) : -1);
 	const isSendable = status => SENDABLE.includes(norm(status));
+
+	// Optional columns: without one, only what needs it is off. LinkedIn Profile, Personalized
+	// Message and Outreach Status are required.
+	const OPTIONAL = [
+		{ key: "sentDate", off: "Sent Dates aren't written, and “Who accepted” is off" },
+		{ key: "notes", off: "reply text isn't saved (Outreach Status still changes to Replied), and “Who accepted” is off" },
+		{ key: "admin", off: "admin replies are off (To send still lists people you're already connected with)" },
+	];
+	// The optional columns a header row doesn't have → [{ key, name, off }]
+	const missingColumns = header => OPTIONAL.filter(o => findCol(header || [], COLUMNS[o.key]) < 0).map(o => ({ ...o, name: COLUMNS[o.key] }));
+	const missingText = m => `No ${m.name} column — ${m.off}.`;
+
+	// -------------------------------------------------------------------------
+	// Connection settings (storage.sync). Two set-ups:
+	//   "team" — the team web app (team-config.js, or Settings → Advanced) and your sheet's
+	//            link. Requests carry your Google login; no key.
+	//   "own"  — your sheet's own script (Code.gs inside your sheet): its URL and secret key.
+	// Saved settings without a mode (from before 2.2) that have a URL and a key are "own".
+	// -------------------------------------------------------------------------
+	const SETTINGS_DEFAULTS = { mode: "", tabName: "", sheetUrl: "", teamUrl: "", scriptUrl: "", secretKey: "", useGoogleLogin: false };
+	const DEFAULT_TAB = "MY LEADS";
+	// https://script.google.com/macros/s/<id>/exec  or  …/a/macros/<domain>/s/<id>/exec
+	const WEB_APP_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]+\/exec$/;
+	const teamConfig = () => globalThis.RT_TEAM || {};
+	const modeOf = c => (c.mode === "team" || c.mode === "own" ? c.mode : c.scriptUrl && c.secretKey ? "own" : "team");
+	const cleanUrl = u =>
+		String(u || "")
+			.trim()
+			.replace(/[?#].*$/, "")
+			.replace(/\/+$/, "");
+	const teamUrlOf = c => cleanUrl(c.teamUrl) || cleanUrl(teamConfig().webAppUrl);
+	// The id in a Google Sheets link (or an id pasted on its own); "" if there's none.
+	function sheetIdOf(text) {
+		const s = String(text || "").trim();
+		const m = s.match(/\/spreadsheets\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{20,})/);
+		if (m) return m[1];
+		return /^[A-Za-z0-9_-]{25,}$/.test(s) ? s : "";
+	}
+	// Everything a request needs, from the saved (or typed) settings.
+	function connection(c) {
+		c = { ...SETTINGS_DEFAULTS, ...(c || {}) };
+		const mode = modeOf(c);
+		return {
+			mode,
+			tabName: String(c.tabName || "").trim() || DEFAULT_TAB,
+			sheetUrl: String(c.sheetUrl || "").trim(),
+			sheetId: sheetIdOf(c.sheetUrl),
+			url: mode === "team" ? teamUrlOf(c) : cleanUrl(c.scriptUrl),
+			secretKey: String(c.secretKey || "").trim(),
+			googleLogin: mode === "team" || !!c.useGoogleLogin,
+		};
+	}
+	const isReady = k => !!(k.tabName && k.url && (k.mode === "team" ? k.sheetId : k.secretKey));
+	const isConfigured = c => isReady(connection(c));
 
 	// -------------------------------------------------------------------------
 	// Placeholders: {Name}, {Company Name}, {firstName}… (also {{ }}). Every column of
@@ -247,11 +302,9 @@
 	}
 
 	root.ORShared = {
-		fmtLong,
 		estimate,
 		NOTE_LIMIT,
 		COLUMNS,
-		SENDABLE,
 		DEFAULTS,
 		SKIP_PAUSE,
 		BREAK_S,
@@ -262,14 +315,23 @@
 		norm,
 		findCol,
 		isSendable,
-		keyOf,
+		OPTIONAL,
+		missingColumns,
+		missingText,
+		SETTINGS_DEFAULTS,
+		DEFAULT_TAB,
+		WEB_APP_RE,
+		teamConfig,
+		modeOf,
+		sheetIdOf,
+		connection,
+		isReady,
+		isConfigured,
 		rowVars,
 		withProfile,
-		markerVars,
 		fill,
 		chars,
 		noteSetup,
 		buildNote,
-		PROFILE_KEYS,
 	};
 })(globalThis);
