@@ -100,11 +100,14 @@
 
 	// ---- fetch ----
 	const origFetch = window.fetch;
-	// The page gets LinkedIn's own promise back, untouched: a request that fails (offline, blocked
-	// by an ad blocker…) fails for the page exactly as without the extension — it isn't reported as
-	// an error of this extension. Search answers are read from a copy, on the side.
+	// A LinkedIn request that fails (offline, blocked by an ad blocker…) while nothing on the page
+	// waits for its answer would show up in chrome://extensions as an error of THIS extension,
+	// because this wrapper is in its stack. The page still gets the very same promise; this only
+	// marks a failure nobody listens to as handled.
+	// Search answers are read from a copy, on the side.
 	window.fetch = function (input, init) {
 		const p = origFetch.apply(this, arguments);
+		p.catch(() => {});
 		let url = "";
 		try {
 			url = input instanceof Request ? input.url : String(input);

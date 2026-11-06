@@ -46,7 +46,13 @@
 				learnProfileDeco(url);
 			}
 		} catch (e) {}
-		return origFetch.apply(this, arguments);
+		// A LinkedIn request that fails (offline, blocked by an ad blocker…) while nothing on the page
+		// waits for its answer would show up in chrome://extensions as an error of THIS extension,
+		// because this wrapper is in its stack. The page still gets the very same promise; this only
+		// marks a failure nobody listens to as handled.
+		const p = origFetch.apply(this, arguments);
+		p.catch(() => {});
+		return p;
 	};
 	const XHR = XMLHttpRequest.prototype;
 	const origOpen = XHR.open;
