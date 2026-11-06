@@ -96,6 +96,15 @@ function keepAwake(beat) {
 	return () => clearInterval(id);
 }
 
+// Profiles the SalesNav Scraper read today (its own counter, "dailyProfileCount" { day: "YYYY-MM-DD", n }).
+// They count against the same daily LinkedIn limit as connection requests.
+async function scrapedToday() {
+	const d = new Date();
+	const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+	const c = await getLocal("dailyProfileCount", null);
+	return c && c.day === day ? c.n || 0 : 0;
+}
+
 // "LinkedIn logged out — sign in again" banner. Cleared when LinkedIn signs you in again.
 const LOGGED_OUT_KEY = "rtLoggedOut";
 const setLoggedOut = where => chrome.storage.local.set({ [LOGGED_OUT_KEY]: { at: Date.now(), where: String(where || "") } }).catch(() => {});

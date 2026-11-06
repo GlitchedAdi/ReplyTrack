@@ -1,0 +1,546 @@
+/* Scraper popup — the ReplyTrack look: near-black, dark cards, white pills, Montserrat +
+   JetBrains Mono (the dashboard's fonts), and the dashboard's light / dark choice. */
+
+@font-face {
+	font-family: "Montserrat";
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url("../fonts/montserrat-latin.woff2") format("woff2");
+	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: "Montserrat";
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url("../fonts/montserrat-latin-ext.woff2") format("woff2");
+	unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+	font-family: "JetBrains Mono";
+	font-style: normal;
+	font-weight: 100 800;
+	font-display: swap;
+	src: url("../fonts/jetbrains-mono-latin.woff2") format("woff2");
+}
+
+:root {
+	color-scheme: dark;
+	--bg: #050505;
+	--card: #111113;
+	--card-2: #18181b;
+	--input: #0a0a0b;
+	--line: #222222;
+	--line-2: #2e2e33;
+	--text: #ffffff;
+	--muted: #8a8a8a;
+	--dim: #565656;
+	--pill: #ffffff;
+	--pill-text: #000000;
+	--blue: #5b8def;
+	--amber: #f5a623;
+	--green: #34c88a;
+	--red: #ef4444;
+	--amber-bg: rgba(245, 166, 35, 0.1);
+	--green-bg: rgba(52, 200, 138, 0.12);
+	--red-bg: rgba(239, 68, 68, 0.12);
+	--sans: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+	--mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+
+* {
+	box-sizing: border-box;
+}
+body {
+	width: 360px;
+	margin: 0;
+	padding: 16px;
+	background: var(--bg);
+	color: var(--text);
+	font: 400 13px/1.5 var(--sans);
+	-webkit-font-smoothing: antialiased;
+}
+a {
+	color: var(--text);
+}
+
+/* ---- Header ---- */
+h3 {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 800;
+	letter-spacing: -0.01em;
+}
+h3 .ver {
+	display: block;
+	margin-top: 2px;
+	font: 500 10px var(--mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+#openDashboard {
+	display: inline-block !important;
+	margin: 10px 0 14px !important;
+	padding: 5px 12px;
+	border: 1px solid var(--line-2);
+	border-radius: 999px;
+	font-size: 11.5px !important;
+	font-weight: 600;
+	text-decoration: none;
+	color: var(--text);
+}
+#openDashboard:hover {
+	background: var(--card-2);
+}
+h2:empty {
+	display: none;
+}
+
+/* ---- Cards ---- */
+.stats {
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	padding: 12px 14px;
+	margin-bottom: 14px;
+	font-size: 13px;
+	line-height: 1.6;
+}
+.stats strong {
+	font-weight: 800;
+	font-size: 15px;
+}
+.status {
+	font-size: 11.5px;
+	color: var(--muted);
+}
+.field-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 8px;
+}
+label {
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--text);
+}
+input[type="number"] {
+	width: 70px;
+	padding: 6px 8px;
+	border: 1px solid var(--line-2);
+	border-radius: 8px;
+	background: var(--input);
+	color: var(--text);
+	font: 600 13px var(--mono);
+	text-align: center;
+}
+input[type="number"]:focus {
+	outline: none;
+	border-color: var(--muted);
+}
+input.narrow {
+	width: 54px;
+}
+input[type="checkbox"],
+input[type="radio"] {
+	accent-color: var(--text);
+}
+label.check {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	font-weight: 500;
+	font-size: 12px;
+	color: var(--muted);
+	margin-top: 6px;
+	cursor: pointer;
+}
+label.check input {
+	margin-top: 2px;
+}
+.total-pages {
+	font-size: 12.5px;
+	color: var(--muted);
+	margin: 2px 0 6px;
+}
+.total-pages strong {
+	font: 700 14px var(--mono);
+	color: var(--text);
+}
+.hint {
+	font-size: 11px;
+	color: var(--muted);
+}
+
+/* ---- Modes ---- */
+.modes {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 14px 0;
+}
+.mode {
+	display: block;
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	padding: 11px 12px;
+	cursor: pointer;
+	font-weight: 500;
+}
+.mode:hover {
+	border-color: var(--line-2);
+}
+.mode:has(input[type="radio"]:checked) {
+	border-color: var(--text);
+	background: var(--card-2);
+}
+.mode .t {
+	font-weight: 700;
+	font-size: 13.5px;
+	color: var(--text);
+}
+.mode .d {
+	font-size: 11.5px;
+	color: var(--muted);
+	margin: 4px 0 0 24px;
+	line-height: 1.45;
+}
+.mode input[type="radio"] {
+	margin: 0 8px 0 0;
+	vertical-align: -2px;
+}
+.mode .sub {
+	margin-left: 24px;
+}
+.speed {
+	font: 700 9.5px var(--mono);
+	letter-spacing: 0.06em;
+	padding: 2px 7px;
+	border-radius: 999px;
+	margin-left: 6px;
+	vertical-align: 1px;
+}
+.fast {
+	background: var(--green-bg);
+	color: var(--green);
+}
+.slow {
+	background: var(--amber-bg);
+	color: var(--amber);
+}
+.tab-warn {
+	margin-top: 6px;
+	font-size: 12px;
+	color: var(--red);
+	font-weight: 600;
+}
+.note {
+	font-size: 11px;
+	color: var(--amber);
+	background: var(--amber-bg);
+	border-radius: 8px;
+	padding: 7px 9px;
+	margin: 8px 0 0 24px;
+	line-height: 1.45;
+}
+.extra {
+	color: var(--amber);
+	font-weight: 600;
+}
+
+/* ---- Estimate, continue, settings ---- */
+.estimate {
+	font-size: 12px;
+	color: var(--muted);
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 9px 11px;
+	margin-bottom: 12px;
+}
+.continue-box {
+	margin-top: 10px;
+	border: 1px solid var(--amber);
+	background: var(--amber-bg);
+	border-radius: 12px;
+	padding: 10px 12px;
+}
+.continue-text {
+	font-size: 12px;
+	color: var(--text);
+	margin-bottom: 8px;
+	line-height: 1.45;
+}
+details.settings {
+	margin-bottom: 12px;
+	font-size: 12px;
+	color: var(--muted);
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	padding: 10px 12px;
+}
+details.settings summary {
+	cursor: pointer;
+	font-weight: 600;
+	color: var(--text);
+}
+details.settings[open] summary {
+	margin-bottom: 6px;
+}
+.group {
+	font: 600 10px var(--mono);
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	margin: 12px 0 8px;
+}
+
+/* ---- Buttons: pills ---- */
+button {
+	width: 100%;
+	padding: 11px 14px;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	font: 700 13px var(--sans);
+	cursor: pointer;
+	margin-top: 6px;
+	transition: background 0.15s, opacity 0.15s;
+}
+button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+.btn-start,
+.btn-find {
+	background: var(--pill);
+	color: var(--pill-text);
+}
+.btn-start:hover,
+.btn-find:hover:not(:disabled) {
+	opacity: 0.88;
+}
+.btn-find {
+	margin-top: 0;
+}
+.btn-find:disabled {
+	cursor: progress;
+}
+.btn-stop {
+	background: var(--red);
+	color: #fff;
+}
+.btn-stop:hover {
+	opacity: 0.88;
+}
+.btn-continue {
+	background: var(--amber);
+	color: #000;
+	margin-top: 0;
+}
+.btn-continue:hover {
+	opacity: 0.88;
+}
+.btn-sub {
+	display: block;
+	font-size: 11px;
+	font-weight: 500;
+	opacity: 0.75;
+	margin-top: 2px;
+}
+.btn-small,
+button.cf-copy {
+	background: transparent;
+	color: var(--text);
+	border-color: var(--line-2);
+}
+.btn-small:hover,
+button.cf-copy:hover {
+	background: var(--card-2);
+}
+.row {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.row > div {
+	width: 100%;
+	color: var(--muted);
+	margin-top: 12px !important;
+}
+.row > div b {
+	color: var(--text);
+}
+.row > button {
+	flex: 1;
+}
+.btn-small {
+	font-size: 11.5px;
+	font-weight: 600;
+	padding: 7px 10px;
+}
+
+/* ---- Log ---- */
+.log-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 16px;
+	font: 600 10px var(--mono);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+.log-head .row {
+	flex-wrap: nowrap;
+	width: auto !important;
+}
+.log-head .row .btn-small {
+	white-space: nowrap;
+	flex: none;
+	width: auto;
+}
+.log-head .btn-small {
+	margin-top: 0;
+	font-family: var(--sans);
+	letter-spacing: 0;
+	text-transform: none;
+}
+#log {
+	margin-top: 8px;
+	height: 170px;
+	overflow-y: auto;
+	background: var(--input);
+	border: 1px solid var(--line);
+	color: var(--muted);
+	font: 10.5px/1.5 var(--mono);
+	padding: 8px 10px;
+	border-radius: 10px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+#log .warn {
+	color: var(--amber);
+}
+#log .error {
+	color: var(--red);
+}
+#log .start {
+	color: var(--green);
+	font-weight: 700;
+	border-top: 1px solid var(--line-2);
+	margin-top: 4px;
+	padding-top: 4px;
+}
+#log .src {
+	color: var(--blue);
+}
+
+/* ---- Contact finder (LinkedIn profile pages) ---- */
+.contact-box {
+	margin: 12px 0 4px;
+}
+.cf-result {
+	margin-top: 10px;
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	padding: 11px 12px;
+}
+.cf-row + .cf-row {
+	margin-top: 10px;
+}
+.cf-label {
+	display: block;
+	font: 600 10px var(--mono);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--muted);
+	margin-bottom: 5px;
+}
+.cf-field {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+.cf-field + .cf-src + .cf-field {
+	margin-top: 6px;
+}
+.cf-field input {
+	flex: 1;
+	min-width: 0;
+	padding: 7px 9px;
+	border: 1px solid var(--line-2);
+	border-radius: 8px;
+	font: 500 12.5px var(--sans);
+	color: var(--text);
+	background: var(--input);
+}
+button.cf-copy {
+	width: auto;
+	flex: none;
+	margin: 0;
+	padding: 6px 12px;
+	font-size: 11px;
+}
+button.cf-copy.done {
+	background: var(--green-bg);
+	color: var(--green);
+	border-color: transparent;
+}
+.cf-src {
+	font-size: 10.5px;
+	color: var(--muted);
+	margin-top: 3px;
+}
+.cf-none {
+	font-size: 12.5px;
+	color: var(--muted);
+	font-style: italic;
+}
+.cf-none.all {
+	text-align: center;
+	padding: 2px 0;
+}
+.cf-error {
+	font-size: 12px;
+	color: var(--red);
+}
+.cf-note {
+	font-size: 11px;
+	color: var(--amber);
+	margin-top: 8px;
+}
+
+/* ---- Simplified layout ---- */
+.saved {
+	margin: 10px 0 12px;
+	font-size: 12px;
+	color: var(--muted);
+	text-align: center;
+}
+.saved b {
+	color: var(--text);
+}
+details.settings .row > button {
+	flex: 1;
+	margin-top: 0;
+}
+details.settings .log-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin: 14px 0 0;
+}
+#profileBreakdown:empty {
+	display: none;
+}
+#profileBreakdown:not(:empty)::after {
+	content: "";
+	display: block;
+}

@@ -1,6 +1,5 @@
 // Outreach: the rows from your sheet, Start / Stop / Continue and Dry run, progress, the
-// message preview, pace, the accepted check, the rows table, Export CSV and the log.
-// (The note and the pace are set in Settings.)
+// note and its preview, the pace, the accepted check, the rows table and the log.
 const STATUS = { pending: "Waiting", sent: "Sent", skipped: "Skipped", failed: "Failed" };
 const DEG = { 1: "1st", 2: "2nd", 3: "3rd", 4: "Out of network" };
 const orRowNo = it => it.rows[0]; // the spreadsheet row
@@ -17,7 +16,6 @@ let orHistory = {}; // h:<key> → time a request was sent (only the keys of the
 const sentEarlier = it => !!orHistory["h:" + it.key];
 
 $("reload").innerHTML = `${ICON.refresh}Reload rows from sheet`;
-$("export").innerHTML = `${ICON.download}Export CSV`;
 
 // ---------------------------------------------------------------------------
 // Header, numbers, progress (every render)
@@ -62,7 +60,6 @@ onRender(() => {
 	}
 	$("dry").disabled = active || paused || !configured();
 	$("reload").disabled = active;
-	$("export").disabled = !st.orSheet;
 
 	// Why the last run stopped
 	$("continueBox").classList.toggle("hidden", !box);
@@ -83,13 +80,13 @@ onRender(() => {
 	const t = {};
 	for (const it of items) t[it.status] = (t[it.status] || 0) + 1;
 	$("orToday").textContent = (counts.today || 0).toLocaleString();
-	$("orTodayCap").textContent = counts.limit ? `of ${counts.limit.toLocaleString()} daily limit` : "no daily limit";
+	$("orTodayCap").textContent = counts.limit ? `of ${counts.limit.toLocaleString()} daily limit${counts.scraped ? ` (incl. ${counts.scraped.toLocaleString()} scraped)` : ""}` : "no daily limit";
 	$("orLeft").textContent = todo.toLocaleString();
 	$("orSkipped").textContent = (t.skipped || 0).toLocaleString();
 	$("orFailed").textContent = (t.failed || 0).toLocaleString();
 
 	// Progress
-	const capLeft = counts.limit ? Math.max(0, counts.limit - (counts.today || 0)) : Infinity;
+	const capLeft = counts.limit ? Math.max(0, counts.limit - (counts.used ?? counts.today ?? 0)) : Infinity;
 	$("eta").textContent = S.estimate({ run, todo, st: st0, capLeft });
 	$("bgTip").classList.toggle("hidden", !(active || todo));
 	if (!run.target) {
@@ -119,20 +116,6 @@ onRender(() => {
 		const end = !active && run.stopReason && !box ? ` — ${run.stopReason}` : "";
 		$("orState").textContent = `${sent}${checked}${run.failed || 0} failed${extra}${end}`;
 	}
-
-	// Pace
-	$("rate").textContent = `≈ ${Math.round(3600 / S.secondsPerRequest(st0))} requests / hour`;
-	setHTML(
-		$("pace"),
-		[
-			["Wait on each profile", `${st0.readMin}–${st0.readMax} s`],
-			["Pause before the next", `${st0.pauseMin}–${st0.pauseMax} s`],
-			["1–3 min break", st0.breakEvery > 0 ? `every ~${st0.breakEvery} requests` : "off"],
-			["Auto-stop", st0.dailyCap > 0 ? `${st0.dailyCap} a day` : "off"],
-		]
-			.map(([k, v]) => `<div><span>${esc(k)}</span><span class="mono">${esc(v)}</span></div>`)
-			.join("")
-	);
 
 	// Accepted check (off without a Sent Date or a Response / Notes column)
 	const ac = st.acStatus || {};
@@ -210,15 +193,6 @@ function renderNote() {
 	const sheet = st.orSheet;
 	const header = sheet ? sheet.header : [];
 	const s0 = orSettings();
-	const typed = String(s0.noteText || "").trim();
-	setHTML(
-		$("noteMode"),
-		s0.noteMode === "none"
-			? "<b>No note</b> — every row gets a plain connection request."
-			: s0.noteMode === "typed"
-				? `<b>One note for everyone</b> — <span class="${S.chars(typed) > S.NOTE_LIMIT ? "err" : ""}">${S.chars(typed)} / ${S.NOTE_LIMIT} characters as typed.</span>`
-				: `<b>Each row's ${esc(S.COLUMNS.message)}</b>, with its placeholders filled.`
-	);
 	const pv = $("preview");
 	const wr = $("warnings");
 	const waiting = orOpen().filter(it => it.status === "pending");
@@ -271,7 +245,7 @@ async function loadOrHistory() {
 }
 
 // ---------------------------------------------------------------------------
-// Rows table + Export CSV
+// Rows table
 // ---------------------------------------------------------------------------
 const MAX_ROWS = 1000; // the table scrolls inside its card
 function renderRows() {
@@ -295,40 +269,9 @@ function renderRows() {
 			);
 		})
 		.join("");
-	$("rowsMore").textContent = list.length > MAX_ROWS ? `Showing ${MAX_ROWS} of ${list.length.toLocaleString()} — Export CSV has them all.` : "";
+	$("rowsMore").textContent = list.length > MAX_ROWS ? `Showing the first ${MAX_ROWS} of ${list.length.toLocaleString()} — use the filter to narrow it down.` : "";
 }
 $("filter").addEventListener("change", renderRows);
-
-const OUT_HEAD = ["requestStatus", "requestDetail", "profileName", "connectionDegree", "noteSent", "sentAt", "checkedAt"];
-const iso = t => (t ? new Date(t).toISOString() : "");
-$("export").addEventListener("click", () => {
-	const sheet = st.orSheet;
-	if (!sheet) return;
-	const items = orItems();
-	const byRow = new Map();
-	for (const it of items) for (const r of it.rows) byRow.set(r, it);
-	const statusCol = S.findCol(sheet.header, S.COLUMNS.status);
-	const w = sheet.header.length;
-	const lines = [sheet.header.concat(OUT_HEAD)];
-	sheet.rows.forEach((row, i) => {
-		const r = sheet.first + i;
-		const it = byRow.get(r);
-		const base = row.concat(Array(Math.max(0, w - row.length)).fill("")).slice(0, w);
-		let out;
-		if (!it) {
-			const status = statusCol >= 0 ? String(row[statusCol] || "").trim() : "";
-			out = [S.isSendable(status) ? "Not for outreach" : "Not touched", S.isSendable(status) ? "no LinkedIn Profile link or no Personalized Message" : `Outreach Status is “${status}”`, "", "", "", "", ""];
-		} else if (orRowNo(it) !== r) out = ["Duplicate", `same person as row ${orRowNo(it)}`, it.name || "", "", "", "", ""];
-		else out = [STATUS[it.status] || it.status, it.detail || (it.would ? `dry run: would ${it.would}` : ""), it.name || "", DEG[it.degree] || "", it.noteSent || "", iso(it.sentAt), iso(it.checkedAt)];
-		lines.push(base.concat(out));
-	});
-	const content = "﻿" + lines.map(r => r.map(S.csvCell).join(",")).join("\r\n");
-	const a = document.createElement("a");
-	a.href = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
-	a.download = `${String(sheet.tab || "sheet").replace(/[\\/:*?"<>|]+/g, "_")}_requests.csv`;
-	a.click();
-	setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-});
 
 // ---------------------------------------------------------------------------
 // Log
@@ -376,4 +319,54 @@ onChange(c => {
 		clearTimeout(rowsTimer);
 		rowsTimer = setTimeout(renderRows, 200);
 	}
+});
+
+// ---------------------------------------------------------------------------
+// The note and the pace (storage.local "orSettings", saved on every change)
+// ---------------------------------------------------------------------------
+const NUMS = ["readMin", "readMax", "pauseMin", "pauseMax", "breakEvery", "dailyCap"];
+
+async function saveOutreach(patch) {
+	const next = { ...orSettings(), ...patch };
+	if (next.readMax < next.readMin) next.readMax = next.readMin;
+	if (next.pauseMax < next.pauseMin) next.pauseMax = next.pauseMin;
+	await chrome.storage.local.set({ orSettings: next });
+}
+function readOutreach() {
+	const p = {};
+	for (const id of NUMS) {
+		const v = Number($(id).value);
+		p[id] = Number.isFinite(v) && v >= 0 ? v : S.DEFAULTS[id];
+	}
+	for (const id of ["readMin", "readMax", "pauseMin", "pauseMax"]) p[id] = Math.max(1, p[id]);
+	p.breakEvery = Math.round(p.breakEvery);
+	p.dailyCap = Math.round(p.dailyCap);
+	p.noteMode = (document.querySelector('input[name="noteMode"]:checked') || {}).value || "column";
+	p.noteText = $("noteText").value;
+	return p;
+}
+const pick = mode => (document.querySelector(`input[name="noteMode"][value="${mode}"]`).checked = true);
+onRender(() => {
+	if (tab !== "outreach") return;
+	const s0 = orSettings();
+	for (const id of NUMS) if (document.activeElement !== $(id)) $(id).value = s0[id];
+	if (!document.activeElement || document.activeElement.name !== "noteMode") pick(["typed", "none"].includes(s0.noteMode) ? s0.noteMode : "column");
+	if (document.activeElement !== $("noteText")) $("noteText").value = s0.noteText || "";
+	const typed = String(s0.noteText || "").trim();
+	$("typedStatus").textContent = typed ? `${S.chars(typed)} / ${S.NOTE_LIMIT} characters as typed (placeholders are filled per row).` : "";
+	$("typedStatus").className = `hint ${S.chars(typed) > S.NOTE_LIMIT ? "err" : ""}`;
+});
+NUMS.forEach(id => $(id).addEventListener("change", () => saveOutreach(readOutreach())));
+document.querySelectorAll('input[name="noteMode"]').forEach(r => r.addEventListener("change", () => saveOutreach(readOutreach())));
+let textTimer = null;
+$("noteText").addEventListener("focus", () => {
+	if (!document.querySelector('input[name="noteMode"][value="typed"]').checked) {
+		pick("typed");
+		saveOutreach(readOutreach());
+	}
+});
+$("noteText").addEventListener("input", () => {
+	pick("typed");
+	clearTimeout(textTimer);
+	textTimer = setTimeout(() => saveOutreach(readOutreach()), 350);
 });

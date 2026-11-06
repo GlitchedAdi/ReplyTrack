@@ -82,22 +82,26 @@ const Outreach = (() => {
 		const day = startOfDay();
 		return c.day === day ? { day, n: c.n || 0, extra: c.extra || 0 } : { day, n: 0, extra: 0 };
 	}
+	// One daily limit for LinkedIn: connection requests + the scraper's profiles (scrapedToday).
 	async function capState(st) {
 		const c = await todayCounts();
+		const scraped = await scrapedToday();
 		const limit = st.dailyCap > 0 ? st.dailyCap + c.extra : 0;
-		return { today: c.n, limit, reached: !!limit && c.n >= limit };
+		const used = c.n + scraped;
+		return { today: c.n, scraped, used, limit, reached: !!limit && used >= limit };
 	}
+	const capText = cap => `${plural(cap.today, "request")} sent${cap.scraped ? ` + ${plural(cap.scraped, "profile")} scraped` : ""} today`;
 	const bumpSent = () =>
 		serial(async () => {
 			const c = await todayCounts();
 			c.n++;
 			await chrome.storage.local.set({ orCounts: c });
 		});
-	// The limit becomes: requests sent so far today + dailyCap.
+	// The limit becomes: what's used so far today (requests + scraped profiles) + dailyCap.
 	const grantMore = () =>
 		serial(async () => {
 			const c = await todayCounts();
-			c.extra = c.n;
+			c.extra = c.n + (await scrapedToday());
 			await chrome.storage.local.set({ orCounts: c });
 		});
 
@@ -112,30 +116,8 @@ const Outreach = (() => {
 		return Math.max(0, ...ks.map(k => h[k] || 0));
 	}
 
-	// A history time before 2003 means "sent, date unknown" (an import without a date).
-	const UNKNOWN_DATE = 1;
+	// A history time before 2003 means "sent, date unknown".
 	const knownDate = t => t > 1041379200000;
-
-	// "Import sent history": { key or profile URL → time } from the old outreach extension.
-	async function importHistory(entries) {
-		const add = {};
-		for (const [k, v] of Object.entries(entries || {})) {
-			const key = keyOf(String(k).replace(/^h:/, "").includes("linkedin.com") ? S.idFromCell(String(k).replace(/^h:/, "")) : String(k).replace(/^h:/, ""));
-			if (key) add[H(key)] = Number(v) > 0 ? Number(v) : UNKNOWN_DATE;
-		}
-		const keys = Object.keys(add);
-		if (!keys.length) return { ok: false, error: "No people found in that file." };
-		const have = await chrome.storage.local.get(keys);
-		let added = 0;
-		for (const k of keys) {
-			// The earliest known date wins; an unknown date never replaces a known one.
-			if (have[k]) add[k] = knownDate(have[k]) && knownDate(add[k]) ? Math.min(have[k], add[k]) : knownDate(have[k]) ? have[k] : add[k];
-			else added++;
-		}
-		await chrome.storage.local.set(add);
-		log("info", `Imported sent history: ${plural(keys.length, "person", "people")} (${added} new). They never get another request from this extension.`);
-		return { ok: true, n: keys.length, added };
-	}
 
 	// ---------------------------------------------------------------------------
 	// Self-repair: when YOU send a connection request with a note by hand (any LinkedIn tab
@@ -400,7 +382,7 @@ const Outreach = (() => {
 		if (note.skip) return skip({ ...base, ...noteSkipped(note.skip) }, note.skip, { level: "warn" });
 
 		const cap = await capState(st);
-		if (cap.reached) return { defer: true, patch: base, stop: { kind: "cap", reason: `Auto-stopped at today's limit (${cap.today} requests sent today).` } };
+		if (cap.reached) return { defer: true, patch: base, stop: { kind: "cap", reason: `Auto-stopped at today's limit (${capText(cap)}).` } };
 
 		// Stay on the profile for a few seconds, like reading it, before sending.
 		const readMs = rand(st.readMin, st.readMax) * 1000;
@@ -538,7 +520,7 @@ const Outreach = (() => {
 				if (job !== "check") {
 					const cap = await capState(st);
 					if (cap.reached) {
-						stop = { kind: "cap", reason: `Auto-stopped at today's limit (${cap.today} requests sent today).` };
+						stop = { kind: "cap", reason: `Auto-stopped at today's limit (${capText(cap)}).` };
 						break;
 					}
 				}
@@ -666,7 +648,7 @@ const Outreach = (() => {
 		if (job !== "check") {
 			const cap = await capState(st);
 			if (cap.reached) {
-				if (!opts.pastCap) return { ok: false, capReached: true, today: cap.today, dailyCap: st.dailyCap, error: `Today's auto-stop limit is reached (${cap.today} requests sent today).` };
+				if (!opts.pastCap) return { ok: false, capReached: true, today: cap.today, dailyCap: st.dailyCap, error: `Today's LinkedIn limit is reached (${capText(cap)}).` };
 				await grantMore();
 				log("info", `Continuing past today's auto-stop: up to ${st.dailyCap} more requests today.`);
 			}
@@ -711,7 +693,6 @@ const Outreach = (() => {
 		startRun,
 		stopRun,
 		loadSheet,
-		importHistory,
 		resumeAfterRestart,
 		counts: async () => capState(await settings()),
 		isRunning: () => running,

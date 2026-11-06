@@ -1,11 +1,9 @@
-// Settings: Connection (storage.sync), Outreach — the note and the pace (storage.local
-// "orSettings", saved as you type) — and Data (reset sync history, import sent history).
+// Settings: Connection (storage.sync) and Data (reset sync history).
+// The note and the pace are on the Outreach page (dash/outreach.js).
 //
-// Connection, two set-ups (S.connection):
-//   team — the team web app (built in: team-config.js; changeable under Advanced) + your
-//          sheet link. "Connect Google account" opens the web app once for Google's
-//          permission screen.
-//   own  — Advanced → "Use my sheet's own script": its web app URL + secret key.
+// Connection (S.connection): the team web app (built in: team-config.js; changeable under
+// Advanced) + your sheet link. "Connect Google account" opens the web app once for Google's
+// permission screen.
 
 function show(el, text, kind) {
 	$(el).textContent = text;
@@ -27,44 +25,29 @@ const teamUrlToStore = u => (cleanUrl(u) === builtInUrl() ? "" : cleanUrl(u));
 
 function readConnection() {
 	return {
-		mode: $("ownMode").checked ? "own" : "team",
 		tabName: $("tabName").value.trim(),
 		sheetUrl: $("sheetUrl").value.trim(),
 		teamUrl: teamUrlToStore($("teamUrl").value),
-		scriptUrl: cleanUrl($("scriptUrl").value),
-		secretKey: $("secretKey").value.trim(),
-		useGoogleLogin: $("useGoogleLogin").checked,
 	};
 }
 
-// What's saved, in the same shape (a saved set-up from before 2.2 counts as "own").
+// What's saved, in the same shape.
 function savedConnection() {
 	return {
-		mode: S.modeOf(cfg),
 		tabName: String(cfg.tabName || "").trim() || S.DEFAULT_TAB,
 		sheetUrl: String(cfg.sheetUrl || "").trim(),
 		teamUrl: teamUrlToStore(cfg.teamUrl),
-		scriptUrl: cleanUrl(cfg.scriptUrl),
-		secretKey: String(cfg.secretKey || "").trim(),
-		useGoogleLogin: !!cfg.useGoogleLogin,
 	};
 }
 
 function validate(s) {
 	if (!s.tabName) return "Enter your tab name.";
-	if (s.mode === "team") {
-		if (!s.sheetUrl) return "Paste your sheet link.";
-		if (!S.sheetIdOf(s.sheetUrl)) return "That doesn't look like a Google Sheets link. Open your sheet and copy the address — it starts with https://docs.google.com/spreadsheets/d/";
-		const url = s.teamUrl || builtInUrl();
-		if (!url) return "The team web app URL isn't set. Enter it under Advanced — your team lead has it.";
-		if (/\/dev$/.test(url)) return "The team web app URL (Advanced) is a test (/dev) URL. Use the one that ends in /exec.";
-		if (!S.WEB_APP_RE.test(url)) return "The team web app URL (Advanced) doesn't look right. It should start with https://script.google.com/ and end with /exec.";
-		return "";
-	}
-	if (!s.scriptUrl) return "Enter your script's web app URL (Advanced).";
-	if (/\/dev$/.test(s.scriptUrl)) return "That's a test (/dev) URL. Use the deployment URL that ends in /exec.";
-	if (!S.WEB_APP_RE.test(s.scriptUrl)) return "That doesn't look like an Apps Script web app URL. It should start with https://script.google.com/ and end with /exec.";
-	if (!s.secretKey) return "Enter the secret key (the same as SECRET_KEY in your Code.gs).";
+	if (!s.sheetUrl) return "Paste your sheet link.";
+	if (!S.sheetIdOf(s.sheetUrl)) return "That doesn't look like a Google Sheets link. Open your sheet and copy the address — it starts with https://docs.google.com/spreadsheets/d/";
+	const url = s.teamUrl || builtInUrl();
+	if (!url) return "The team web app URL isn't set. Enter it under Advanced — your team lead has it.";
+	if (/\/dev$/.test(url)) return "The team web app URL (Advanced) is a test (/dev) URL. Use the one that ends in /exec.";
+	if (!S.WEB_APP_RE.test(url)) return "The team web app URL (Advanced) doesn't look right. It should start with https://script.google.com/ and end with /exec.";
 	return "";
 }
 
@@ -106,8 +89,6 @@ function problemText(r, settings) {
 			return "Paste your sheet link first.";
 	}
 	if (e === "tab not found") return `Your sheet has no tab called “${settings.tabName}”. Check the spelling (spaces count).`;
-	if (e === "wrong key") return "The secret key doesn't match SECRET_KEY in your Code.gs.";
-	if (/SECRET_KEY/.test(e)) return `Your Code.gs isn't ready: ${e}. Set it, save, and deploy a new version.`;
 	if (/^missing column: /.test(e)) return `Row 1 of “${settings.tabName}” has no “${e.slice(16)}” column. It's needed — add it exactly as written.`;
 	return `Problem: ${e}`;
 }
@@ -132,19 +113,6 @@ async function testConnection(settings) {
 	lines.push(`Dates and reply times use the time zone ${r.timeZone}.`);
 	show("msg", lines.join("\n"), lines.some(l => l.startsWith("⚠")) ? "bad" : "ok");
 	return true;
-}
-
-$("showKey").addEventListener("click", () => {
-	const hidden = $("secretKey").type === "password";
-	$("secretKey").type = hidden ? "text" : "password";
-	$("showKey").textContent = hidden ? "Hide" : "Show";
-});
-
-// Only the fields of the chosen set-up show.
-function applyMode() {
-	const own = $("ownMode").checked;
-	$("connCard").classList.toggle("own", own);
-	$("connIntro").textContent = own ? "Your sheet's own script — Code.gs inside your sheet, deployed by you." : "Your Google Sheet — your copy of the team template.";
 }
 
 // The template link (team-config.js) — only a docs.google.com link is shown.
@@ -189,7 +157,6 @@ async function saveConnection() {
 	try {
 		await chrome.storage.sync.set(s);
 		cfg = { ...cfg, ...s }; // the bar goes now; storage.onChanged follows
-		$("scriptUrl").value = s.scriptUrl;
 		renderSaveBar();
 		const ok = await testConnection(s);
 		await send({ type: "settingsSaved" });
@@ -206,7 +173,7 @@ $("save").addEventListener("click", saveConnection);
 // "You have unsaved changes": the Connection fields differ from what's saved. (The Outreach
 // settings save as you type, so they're never unsaved.)
 let barProblem = "";
-const CONNECTION_FIELDS = ["tabName", "sheetUrl", "teamUrl", "scriptUrl", "secretKey"];
+const CONNECTION_FIELDS = ["tabName", "sheetUrl", "teamUrl"];
 function connectionDirty() {
 	const now = readConnection();
 	const saved = savedConnection();
@@ -224,12 +191,6 @@ for (const id of CONNECTION_FIELDS)
 		barProblem = "";
 		renderSaveBar();
 	});
-for (const id of ["useGoogleLogin", "ownMode"])
-	$(id).addEventListener("change", () => {
-		barProblem = "";
-		applyMode();
-		renderSaveBar();
-	});
 $("saveBarSave").addEventListener("click", () => {
 	if (tab !== "settings") showTab("settings"); // the test result shows in the Connection card
 	$("connCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -245,14 +206,8 @@ function fillConnection(all) {
 	put("tabName", s.tabName);
 	put("sheetUrl", s.sheetUrl);
 	put("teamUrl", s.teamUrl || builtInUrl());
-	put("scriptUrl", s.scriptUrl);
-	put("secretKey", s.secretKey);
-	$("useGoogleLogin").checked = s.useGoogleLogin;
-	$("ownMode").checked = s.mode === "own";
-	// Advanced opens by itself when it holds something you need: your own script, or a team
-	// web app URL that isn't built in.
-	if (s.mode === "own" || !builtInUrl()) $("advanced").open = true;
-	applyMode();
+	// Advanced opens by itself when no team web app URL is built in.
+	if (!builtInUrl()) $("advanced").open = true;
 }
 $("discard").addEventListener("click", () => {
 	fillConnection(true);
@@ -294,94 +249,10 @@ onRender(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Outreach: note + pace (saved on every change)
-// ---------------------------------------------------------------------------
-const NUMS = ["readMin", "readMax", "pauseMin", "pauseMax", "breakEvery", "dailyCap"];
-
-async function saveOutreach(patch) {
-	const next = { ...orSettings(), ...patch };
-	if (next.readMax < next.readMin) next.readMax = next.readMin;
-	if (next.pauseMax < next.pauseMin) next.pauseMax = next.pauseMin;
-	await chrome.storage.local.set({ orSettings: next });
-}
-function readOutreach() {
-	const p = {};
-	for (const id of NUMS) {
-		const v = Number($(id).value);
-		p[id] = Number.isFinite(v) && v >= 0 ? v : S.DEFAULTS[id];
-	}
-	for (const id of ["readMin", "readMax", "pauseMin", "pauseMax"]) p[id] = Math.max(1, p[id]);
-	p.breakEvery = Math.round(p.breakEvery);
-	p.dailyCap = Math.round(p.dailyCap);
-	p.noteMode = (document.querySelector('input[name="noteMode"]:checked') || {}).value || "column";
-	p.noteText = $("noteText").value;
-	return p;
-}
-const pick = mode => (document.querySelector(`input[name="noteMode"][value="${mode}"]`).checked = true);
-onRender(() => {
-	if (tab !== "settings") return;
-	const s0 = orSettings();
-	for (const id of NUMS) if (document.activeElement !== $(id)) $(id).value = s0[id];
-	if (!document.activeElement || document.activeElement.name !== "noteMode") pick(["typed", "none"].includes(s0.noteMode) ? s0.noteMode : "column");
-	if (document.activeElement !== $("noteText")) $("noteText").value = s0.noteText || "";
-	const typed = String(s0.noteText || "").trim();
-	$("typedStatus").textContent = typed ? `${S.chars(typed)} / ${S.NOTE_LIMIT} characters as typed (placeholders are filled per row).` : "";
-	$("typedStatus").className = `hint ${S.chars(typed) > S.NOTE_LIMIT ? "err" : ""}`;
-	$("setRate").textContent = `≈ ${Math.round(3600 / S.secondsPerRequest(s0))} requests / hour`;
-});
-NUMS.forEach(id => $(id).addEventListener("change", () => saveOutreach(readOutreach())));
-document.querySelectorAll('input[name="noteMode"]').forEach(r => r.addEventListener("change", () => saveOutreach(readOutreach())));
-let textTimer = null;
-$("noteText").addEventListener("focus", () => {
-	if (!document.querySelector('input[name="noteMode"][value="typed"]').checked) {
-		pick("typed");
-		saveOutreach(readOutreach());
-	}
-});
-$("noteText").addEventListener("input", () => {
-	pick("typed");
-	clearTimeout(textTimer);
-	textTimer = setTimeout(() => saveOutreach(readOutreach()), 350);
-});
-
-// ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
 $("reset").addEventListener("click", async () => {
 	if (!confirm("Reset sync history? The next sync will re-check your 50 most recent conversations.")) return;
 	await send({ type: "resetHistory" });
 	alert("Sync history cleared.");
-});
-
-$("importBtn").addEventListener("click", () => $("importFile").click());
-$("importFile").addEventListener("change", async e => {
-	const f = e.target.files[0];
-	e.target.value = "";
-	if (!f) return;
-	try {
-		const text = await f.text();
-		const entries = {};
-		if (/^\s*\{/.test(text)) {
-			// { "h:<key>": time } from the old extension's storage
-			const j = JSON.parse(text);
-			for (const [k, v] of Object.entries(j)) if (/^h:/.test(k)) entries[k] = Number(v) || 0;
-		} else {
-			// The old extension's Export CSV: rows whose requestStatus is "Sent"
-			const rows = S.parseCSV(text);
-			const head = rows[0] || [];
-			const sc = S.findCol(head, "requestStatus");
-			const at = S.findCol(head, "sentAt");
-			if (sc < 0) throw new Error("That CSV has no requestStatus column — is it the old extension's Export CSV?");
-			for (const r of rows.slice(1)) {
-				if (S.norm(r[sc]) !== "sent") continue;
-				const id = r.map(S.idFromCell).find(Boolean);
-				if (id) entries["h:" + id.toLowerCase()] = Date.parse(r[at]) || 0; // 0 = sent, date unknown
-			}
-		}
-		const res = await send({ type: "OR_IMPORT", entries });
-		if (!res || !res.ok) throw new Error((res && res.error) || "no answer");
-		show("importMsg", `Imported ${res.n} people (${res.added} new). They never get another request from ReplyTrack; a waiting row for one of them is marked “Sent” with the original date at the next run.`, "ok");
-	} catch (err) {
-		show("importMsg", `Couldn't import: ${err.message || err}`, "bad");
-	}
 });

@@ -1,23 +1,16 @@
 /**
  * ReplyTrack — Google Apps Script web app
  *
- * One Code.gs, two ways to use it. Which one is decided by WHERE the code lives:
- *
- *   TEAM WEB APP — the code is in its own Apps Script project (script.google.com → New project).
- *     The team lead deploys it ONCE: "Execute as: User accessing the web app",
- *     "Who has access: Anyone with Google account". Each request runs as the team member who
- *     sends it (the extension sends their Google login) and opens THEIR sheet by the ID the
- *     extension sends — so it can only ever touch sheets that person can edit anyway.
- *     No secret key. If it finds it is NOT running as the person calling it (deployed with
- *     "Execute as: Me" by mistake), it refuses every request.
- *
- *   OWN SCRIPT — the code is inside one sheet (Extensions → Apps Script), deployed by that
- *     sheet's owner: "Execute as: Me", "Who has access: Anyone". It only ever touches that
- *     sheet, and every request needs the SECRET_KEY below.
+ * The team web app. It lives in its own Apps Script project (script.google.com → New project),
+ * and the team lead deploys it ONCE: "Execute as: User accessing the web app",
+ * "Who has access: Anyone with Google account". Each request runs as the team member who sends
+ * it (the extension sends their Google login) and opens THEIR sheet by the ID the extension
+ * sends — so it can only ever touch sheets that person can edit anyway. If it finds it is NOT
+ * running as the person calling it (deployed with "Execute as: Me" by mistake), it refuses
+ * every request.
  *
  * Every request is a POST with a JSON body:
- *   team web app: { "sheet": "<spreadsheet id>", "tab": "MY LEADS", "action": "...", ... }
- *   own script:   { "key": "<SECRET_KEY>",       "tab": "MY LEADS", "action": "...", ... }
+ *   { "sheet": "<spreadsheet id>", "tab": "MY LEADS", "action": "...", ... }
  *
  * Actions
  *   ping                                         → checks the tab, the columns, the dropdown, write access
@@ -29,13 +22,15 @@
  *   clearAdmin   { profileUrl, row, adminText, notesText }
  *                                                → after an Admin Reply was seen in the LinkedIn
  *                                                  conversation: clears Admin Reply and Response / Notes
+ *   saveScraped  { columns, rows }               → the scraper's leads into the SCRAP tab (made if missing):
+ *                                                  one row per person (by "key"), filled in as more is found
  *
  * Answer (JSON): { "ok": true, ... }  or  { "ok": false, "error": "..." }
- *   The team web app adds "account": the Google account the request ran as.
- *   errors: "wrong key" | "set SECRET_KEY in Code.gs" | "tab not found" | "missing column: <name>"
- *         | "profile not in tab" | "cell full" | "admin reply changed — not cleared"
- *         | "no \"Admin Reply\" column" | "bad request" | "busy, try again" | "error: ..."
- *   team web app only: "no sheet link" | "no access to sheet" | "no edit access to sheet: ..."
+ *   with "account": the Google account the request ran as.
+ *   errors: "tab not found" | "missing column: <name>" | "profile not in tab" | "cell full"
+ *         | "admin reply changed — not cleared" | "no \"Admin Reply\" column" | "bad request"
+ *         | "busy, try again" | "error: ..." | "no sheet link" | "no sheets permission — ..."
+ *         | "no access to sheet" | "no edit access to sheet: ..."
  *         | "not running as you — ..." (the deployment isn't "Execute as: User accessing the web app")
  *
  * Columns: LinkedIn Profile, Personalized Message and Outreach Status are required. Sent Date,
@@ -51,19 +46,17 @@
  *   - Text in Response / Notes is never deleted or overwritten — new replies are added below it —
  *     except the exact text "Accepted but not replied", and the clear after a verified Admin Reply.
  *   - Clearing removes the contents only: formatting and dropdowns stay.
- *   - Columns are never added, removed or moved.
+ *   - Columns are never added, removed or moved — except in the scraper's own SCRAP tab, which
+ *     this script creates and keeps (its header row gets any new scraper column).
+ *   - In SCRAP a value is only ever added or updated, never cleared, and a cell with a formula is
+ *     left alone. Everything there is stored as plain text (a phone like +91… stays as typed).
  */
 
 // ============================================================================
 // SETTINGS
 // ============================================================================
 
-// OWN SCRIPT only (the team web app ignores it). Make up a long random key (16+ characters,
-// e.g. from a password generator), paste it between the quotes, and enter the SAME key in the
-// extension's settings. While this still says CHANGE-ME, every request is rejected.
-var SECRET_KEY = 'CHANGE-ME';
-
-// TEAM WEB APP only: the template's "Make a copy" link. The page team members see when they
+// The template's "Make a copy" link. The page team members see when they
 // open the web app shows a "Make a copy of the sheet" button with it. '' = no button.
 var TEMPLATE_COPY_URL = 'https://docs.google.com/spreadsheets/d/18kqx2r4G5340pEwYITB-Pd1Il6wJSw9xuYwxI5eyans/copy';
 
@@ -92,9 +85,6 @@ var ENTRY_SEPARATOR = '\n\n';             // blank line between messages in one 
 var CELL_LIMIT = 50000;                   // Google Sheets maximum characters per cell
 var LOCK_WAIT_MS = 30000;                 // how long a write waits for another one to finish
 
-var PLACEHOLDER_KEY = 'CHANGE-ME';
-var MIN_KEY_LENGTH = 16;
-
 // "[27 Oct 2026, 11:42 PM] text" — one message in a Response / Notes cell.
 var ENTRY_RE = /^\[(\d{1,2}) ([A-Za-z]{3,9})\.? (\d{4}), (\d{1,2}):(\d{2}) ?([AP])\.?M\.?\] ?([\s\S]*)$/i;
 // Where the next message starts: a blank line followed by "[27 Oct 2026, 11:42 PM]".
@@ -107,19 +97,10 @@ var SHEET_ID_RE = /^[A-Za-z0-9_-]{20,}$/;
 var NO_EDIT_RE = /permission|not have access|edit access|access denied|read[- ]only/i;
 
 // ----------------------------------------------------------------------------
-// Which set-up is this?
+// Who is calling?
 // ----------------------------------------------------------------------------
 
-// The spreadsheet this code lives in, or null in its own project (the team web app).
-function boundSpreadsheet_() {
-  try {
-    return SpreadsheetApp.getActiveSpreadsheet();
-  } catch (err) {
-    return null;
-  }
-}
-
-// Team web app: the Google account this request runs as — only when that is the person who
+// The Google account this request runs as — only when that is the person who
 // sent it ("Execute as: User accessing the web app"). '' otherwise.
 function teamUser_() {
   var me = '';
@@ -155,10 +136,9 @@ function sheetsPermissionMissing_() {
 // Web app entry points
 // ----------------------------------------------------------------------------
 
-// Opening the web app URL in a browser. Own script: a one-line check, no data. Team web app:
-// the page a team member sees after approving Google's permission screen.
+// Opening the web app URL in a browser: the page a team member sees after approving Google's
+// permission screen.
 function doGet() {
-  if (boundSpreadsheet_()) return ContentService.createTextOutput('ok — ReplyTrack web app is running');
   var email = teamUser_();
   return connectedPage_(email, email ? sheetsPermissionMissing_() : '');
 }
@@ -170,6 +150,7 @@ var ACTIONS = {
   markAccepted: { run: markAccepted_, write: true },
   addReplies: { run: addReplies_, write: true },
   clearAdmin: { run: clearAdmin_, write: true },
+  saveScraped: { run: saveScraped_, write: true, ownTab: true },
 };
 
 function doPost(e) {
@@ -181,47 +162,35 @@ function doPost(e) {
   }
   if (!data || typeof data !== 'object') return out_({ ok: false, error: 'bad request' });
 
-  var bound = boundSpreadsheet_();
-  var account = '';
-  if (bound) {
-    var keyProblem = checkKey_(data.key);
-    if (keyProblem) {
-      console.warn('[ReplySync] Request rejected: %s', keyProblem);
-      return out_({ ok: false, error: keyProblem });
-    }
-  } else {
-    account = teamUser_();
-    if (!account) {
-      console.warn('[ReplySync] Request rejected: %s', NOT_AS_YOU);
-      return out_({ ok: false, error: NOT_AS_YOU });
-    }
+  var account = teamUser_();
+  if (!account) {
+    console.warn('[ReplySync] Request rejected: %s', NOT_AS_YOU);
+    return out_({ ok: false, error: NOT_AS_YOU });
   }
   var answer = function (obj) {
-    if (account) obj.account = account;
+    obj.account = account;
     return out_(obj);
   };
   var action = ACTIONS[data.action];
   if (!action) return answer({ ok: false, error: 'bad request' });
 
-  var ss = bound;
-  if (!bound) {
-    var id = String(data.sheet || '').trim();
-    if (!SHEET_ID_RE.test(id)) return answer({ ok: false, error: 'no sheet link' });
-    if (sheetsPermissionMissing_()) return answer({ ok: false, error: NO_SHEETS_PERMISSION });
-    try {
-      ss = SpreadsheetApp.openById(id);
-    } catch (err) {
-      var why = err && err.message ? err.message : String(err);
-      console.warn('[ReplySync] %s could not open the sheet: %s', account, why);
-      return answer({ ok: false, error: NO_SCOPE_RE.test(why) ? NO_SHEETS_PERMISSION : 'no access to sheet' });
-    }
+  var id = String(data.sheet || '').trim();
+  if (!SHEET_ID_RE.test(id)) return answer({ ok: false, error: 'no sheet link' });
+  if (sheetsPermissionMissing_()) return answer({ ok: false, error: NO_SHEETS_PERMISSION });
+  var ss;
+  try {
+    ss = SpreadsheetApp.openById(id);
+  } catch (err) {
+    var why = err && err.message ? err.message : String(err);
+    console.warn('[ReplySync] %s could not open the sheet: %s', account, why);
+    return answer({ ok: false, error: NO_SCOPE_RE.test(why) ? NO_SHEETS_PERMISSION : 'no access to sheet' });
   }
 
-  // Writes one at a time, so a reply and a status update can't collide. The team web app
-  // queues per person (each has their own sheet); an own script for the whole script.
+  // Writes one at a time per person (each has their own sheet), so a reply and a status
+  // update can't collide.
   var lock = null;
   if (action.write) {
-    lock = bound ? LockService.getScriptLock() : LockService.getUserLock();
+    lock = LockService.getUserLock();
     try {
       lock.waitLock(LOCK_WAIT_MS);
     } catch (err) {
@@ -229,9 +198,14 @@ function doPost(e) {
     }
   }
   try {
-    var ctx = open_(ss, data.tab);
-    if (typeof ctx === 'string') return answer({ ok: false, error: ctx });
-    var result = action.run(ctx, data);
+    var result;
+    if (action.ownTab) {
+      result = action.run(ss, data); // works in its own tab (SCRAP), not in MY LEADS
+    } else {
+      var ctx = open_(ss, data.tab);
+      if (typeof ctx === 'string') return answer({ ok: false, error: ctx });
+      result = action.run(ctx, data);
+    }
     if (action.write) {
       SpreadsheetApp.flush();
       console.log('%s %s %s -> %s', prefix_(data.action), data.action, data.profileUrl || '', JSON.stringify(result));
@@ -240,19 +214,11 @@ function doPost(e) {
   } catch (err) {
     var msg = err && err.message ? err.message : String(err);
     console.error(prefix_(data.action) + ' ' + (err && err.stack ? err.stack : err));
-    if (!bound && action.write && NO_EDIT_RE.test(msg)) return answer({ ok: false, error: 'no edit access to sheet: ' + msg });
+    if (action.write && NO_EDIT_RE.test(msg)) return answer({ ok: false, error: 'no edit access to sheet: ' + msg });
     return answer({ ok: false, error: 'error: ' + msg });
   } finally {
     if (lock) lock.releaseLock();
   }
-}
-
-function checkKey_(key) {
-  var secret = String(SECRET_KEY || '');
-  if (!secret || secret === PLACEHOLDER_KEY) return 'set SECRET_KEY in Code.gs';
-  if (secret.length < MIN_KEY_LENGTH) return 'SECRET_KEY in Code.gs is too short (use 16 or more characters)';
-  if (typeof key !== 'string' || key !== secret) return 'wrong key';
-  return '';
 }
 
 function prefix_(action) {
@@ -500,6 +466,145 @@ function clearAdmin_(ctx, data) {
     console.warn('[ReplySync] Row %s: Response / Notes changed since it was read — left as it is.', row);
   }
   return { ok: true, row: row, notes: result };
+}
+
+// ----------------------------------------------------------------------------
+// The scraper's leads → the SCRAP tab
+// ----------------------------------------------------------------------------
+var SCRAPE_TAB = 'SCRAP';
+var SCRAPE_KEY = 'key';            // first column: which person a row is (the scraper's own id)
+var SCRAPE_MAX_ROWS = 500;         // per request
+var SCRAPE_IN_MY_LEADS = 'inMyLeads';   // "yes" when this person is also in MY LEADS
+var SCRAPE_URL_COLUMNS = ['linkedInProfileUrl', 'defaultProfileUrl', 'profileUrl'];  // their LinkedIn links
+
+// The people in MY LEADS (the tab ReplyTrack works from), by profile key → true. {} if no such tab.
+function myLeadKeys_(ss, tabName) {
+  var out = {};
+  var sheet = findTab_(ss, tabName);
+  if (!sheet || sheet.getLastRow() < 2 || !sheet.getLastColumn()) return out;
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  var c = findColumn_(headers, COLUMNS.profile);
+  if (c < 0) return out;
+  var ctx = { sheet: sheet, col: { profile: c + 1 }, lastRow: sheet.getLastRow(), cache: {} };
+  profiles_(ctx).forEach(function (u) {
+    var k = profileKey_(u);
+    if (k) out[k] = true;
+  });
+  return out;
+}
+
+// { columns: ["key", "fullName", …], rows: [["…", "…", …], …] } — the same order as columns.
+// A person already in the tab (same key) gets their row updated; a new one is added at the end.
+// Only non-empty values are written, and never over a formula.
+function saveScraped_(ss, data) {
+  var columns = Array.isArray(data.columns) ? data.columns.map(function (c) { return String(c || '').trim(); }) : [];
+  var rows = Array.isArray(data.rows) ? data.rows : [];
+  if (columns[0] !== SCRAPE_KEY || columns.some(function (c) { return !c; }) || rows.length > SCRAPE_MAX_ROWS) return { ok: false, error: 'bad request' };
+  if (!rows.length) return { ok: true, added: 0, updated: 0 };
+
+  var sheet = findTab_(ss, SCRAPE_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(SCRAPE_TAB);
+    sheet.getRange(1, 1, 1, columns.length).setValues([columns]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  // Header: the existing columns, plus any new scraper column at the end.
+  var lastCol = sheet.getLastColumn();
+  var header = lastCol ? sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0] : [];
+  var colOf = {};
+  header.forEach(function (h, i) { if (String(h).trim() && !colOf[headerKey_(h)]) colOf[headerKey_(h)] = i + 1; });
+  var added = [];
+  columns.forEach(function (c) {
+    if (colOf[headerKey_(c)]) return;
+    var at = header.length + added.length + 1;
+    colOf[headerKey_(c)] = at;
+    added.push(c);
+    sheet.getRange(1, at).setValue(c).setFontWeight('bold');
+  });
+  var width = header.length + added.length;
+  var keyCol = colOf[headerKey_(SCRAPE_KEY)];
+
+  // Read the tab once; work in memory; write back in a few blocks (not one call per row).
+  var lastRow = sheet.getLastRow();
+  var n = Math.max(0, lastRow - 1);
+  var values2 = n ? sheet.getRange(2, 1, n, width).getValues() : [];
+  var formulas2 = n ? sheet.getRange(2, 1, n, width).getFormulas() : [];
+  var rowOf = {};
+  values2.forEach(function (r, i) {
+    var k = String(r[keyCol - 1] == null ? '' : r[keyCol - 1]).trim().toLowerCase();
+    if (k && !rowOf[k]) rowOf[k] = i + 2;
+  });
+
+  // Already in MY LEADS? (the "inMyLeads" column, when the extension sends it)
+  var mineCol = columns.indexOf(SCRAPE_IN_MY_LEADS);
+  var mine = mineCol >= 0 ? myLeadKeys_(ss, data.tab) : null;
+  var urlCols = SCRAPE_URL_COLUMNS.map(function (c) { return columns.indexOf(c); }).filter(function (i) { return i >= 0; });
+
+  var count = { added: 0, updated: 0 };
+  var changedRows = {};   // row number → true
+  var added2 = [];        // new rows, in order
+  rows.forEach(function (incoming) {
+    if (!Array.isArray(incoming)) return;
+    var key = String(incoming[0] == null ? '' : incoming[0]).trim().toLowerCase();
+    if (!key) return;
+    if (mine) {
+      var hit = urlCols.some(function (i) { var k = profileKey_(incoming[i]); return k && mine[k]; });
+      incoming = incoming.slice();
+      incoming[mineCol] = hit ? 'yes' : '';
+    }
+    var row = rowOf[key];
+    var isNew = !row;
+    var out, formulas;
+    if (isNew) {
+      out = new Array(width).fill('');
+      formulas = [];
+      added2.push(out);
+      row = rowOf[key] = lastRow + added2.length;
+    } else {
+      out = values2[row - 2];
+      formulas = formulas2[row - 2];
+    }
+    var changed = isNew;
+    columns.forEach(function (c, i) {
+      var v = incoming[i];
+      if (i === 0 && !isNew) return;                          // an existing row keeps its key as it is
+      if (v == null || String(v).trim() === '') return;      // nothing new: keep what's there
+      var j = colOf[headerKey_(c)] - 1;
+      if (formulas[j]) return;                                // never over a formula
+      var text = String(v).slice(0, CELL_LIMIT);
+      if (String(out[j]) === text) return;
+      out[j] = text;
+      changed = true;
+    });
+    if (!changed) return;
+    if (isNew) count.added++;
+    else {
+      count.updated++;
+      changedRows[row] = true;
+    }
+  });
+
+  // Changed rows: written in runs of neighbouring rows. A row with a formula is written cell by
+  // cell around it (writing the whole row would turn the formula into its value).
+  var changedList = Object.keys(changedRows).map(Number).sort(function (a, b) { return a - b; });
+  var hasFormula = function (r) { return formulas2[r - 2].some(function (f) { return f; }); };
+  for (var i = 0; i < changedList.length; ) {
+    var first = changedList[i];
+    if (hasFormula(first)) {
+      formulas2[first - 2].forEach(function (f, j) {
+        if (!f) sheet.getRange(first, j + 1).setNumberFormat('@').setValue(values2[first - 2][j]);
+      });
+      i++;
+      continue;
+    }
+    var last = first;
+    while (i + 1 < changedList.length && changedList[i + 1] === last + 1 && !hasFormula(changedList[i + 1])) last = changedList[++i];
+    i++;
+    sheet.getRange(first, 1, last - first + 1, width).setNumberFormat('@').setValues(values2.slice(first - 2, last - 1));
+  }
+  // New rows: one block at the end.
+  if (added2.length) sheet.getRange(lastRow + 1, 1, added2.length, width).setNumberFormat('@').setValues(added2);
+  return { ok: true, tab: sheet.getName(), added: count.added, updated: count.updated, newColumns: added };
 }
 
 // ----------------------------------------------------------------------------
@@ -825,32 +930,4 @@ function connectedPage_(email, missing) {
   return HtmlService.createHtmlOutput(html)
     .setTitle(!email ? 'ReplyTrack — not set up' : missing ? 'ReplyTrack — one more step' : 'ReplyTrack — connected')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-// ----------------------------------------------------------------------------
-// Run this once from the editor (select "testSetup" → Run) to check your set-up.
-// Results appear in the "Execution log" at the bottom of the editor. Read-only.
-// ----------------------------------------------------------------------------
-function testSetup() {
-  var ss = boundSpreadsheet_();
-  if (!ss) {
-    console.log('This is the TEAM WEB APP (its own project) — nothing to test here. Each member checks their own sheet with ReplyTrack → Settings → Test connection.');
-    return;
-  }
-  var keyProblem = checkKey_(SECRET_KEY);
-  console.log('This is an OWN SCRIPT (inside this sheet). Secret key: %s', keyProblem ? 'NOT READY — ' + keyProblem : 'set');
-  console.log('Time zone used for dates and reply times: %s', ss.getSpreadsheetTimeZone() || DEFAULT_TIME_ZONE + ' (the spreadsheet has none set)');
-  ss.getSheets().forEach(function (sheet) {
-    var ctx = open_(ss, sheet.getName());
-    if (typeof ctx === 'string') {
-      console.log('Tab "%s": not usable — %s', sheet.getName(), ctx);
-      return;
-    }
-    var p = ping_(ctx);
-    console.log('Tab "%s": %s rows with a LinkedIn Profile, %s. Outreach Status dropdown: %s%s',
-      sheet.getName(), p.rows,
-      p.missing.length ? 'no ' + p.missing.join(', no ') + ' column (optional)' : 'all columns found',
-      p.statusValues.join(' | ') || 'NONE',
-      p.problems.length ? ' | Problems: ' + p.problems.join('; ') : '');
-  });
 }

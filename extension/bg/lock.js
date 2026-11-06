@@ -4,6 +4,7 @@
 //   "accepted"  — the twice-a-day accepted check
 //   "admin"     — sending an Admin Reply
 //   "adminCheck"— looking up who's a connection yet, for the "To send" list
+//   "scraper"   — a SalesNav Scraper run (bg/scraperguard.js)
 // Whoever holds it works; the others wait until it's released. An Admin Reply you're
 // waiting on goes first; otherwise first come, first served. Kept in storage.session,
 // so it survives the service worker restarting. A holder that stops beating for 3 minutes
@@ -11,7 +12,7 @@
 const Lock = (() => {
 	const KEY = "rtLock";
 	const STALE_MS = 3 * 60 * 1000;
-	const NAMES = { outreach: "outreach", replysync: "the reply sync", accepted: "the accepted check", admin: "an Admin Reply", adminCheck: "the connection check for To send" };
+	const NAMES = { outreach: "outreach", replysync: "the reply sync", accepted: "the accepted check", admin: "an Admin Reply", adminCheck: "the connection check for To send", scraper: "the scraper" };
 	const waiters = [];
 	const releaseHooks = [];
 	let chain = Promise.resolve();

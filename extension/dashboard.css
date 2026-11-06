@@ -57,22 +57,6 @@
 	--sans: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
 	--mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
 }
-:root[data-theme="light"] {
-	color-scheme: light;
-	--bg: #f5f5f3;
-	--grid: #e6e6e2;
-	--card: #ffffff;
-	--card-2: #f6f6f4;
-	--input: #fbfbfa;
-	--line: #e4e4e0;
-	--line-2: #d4d4cf;
-	--text: #0a0a0b;
-	--muted: #6e6e6e;
-	--dim: #a3a3a3;
-	--pill: #0a0a0b;
-	--pill-text: #ffffff;
-	--red: #dc2626;
-}
 
 /* ---- Base ---------------------------------------------------------------- */
 * {
@@ -91,6 +75,7 @@ body {
 	color: var(--text);
 	font: 400 14px/1.55 var(--sans);
 	-webkit-font-smoothing: antialiased;
+	zoom: 1.1; /* everything (text, cards, spacing) 10% larger */
 }
 a {
 	color: inherit;
@@ -157,7 +142,7 @@ svg {
 	flex: none;
 }
 .wrap {
-	max-width: 1200px;
+	max-width: 1440px;
 	margin: 0 auto;
 	padding: 0 32px;
 }
@@ -213,6 +198,7 @@ header.top {
 	padding: 8px 16px;
 	border-radius: 999px;
 	cursor: pointer;
+	white-space: nowrap;
 }
 .tabs button:hover {
 	color: var(--text);
@@ -270,25 +256,6 @@ header.top {
 .status.part .dot {
 	background: var(--amber);
 	box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent);
-}
-.icon-btn {
-	width: 38px;
-	height: 38px;
-	border-radius: 50%;
-	border: 1px solid var(--line-2);
-	background: var(--card);
-	color: var(--text);
-	display: grid;
-	place-items: center;
-	cursor: pointer;
-	padding: 0;
-}
-.icon-btn:hover {
-	border-color: var(--muted);
-}
-.icon-btn svg {
-	width: 17px;
-	height: 17px;
 }
 .avatar {
 	width: 38px;
@@ -507,13 +474,6 @@ main.wrap {
 .cols > .card {
 	margin-top: 0;
 }
-.stack {
-	display: grid;
-	gap: 16px;
-}
-.stack > .card + .card {
-	margin-top: 0;
-}
 
 /* ---- Overview -------------------------------------------------------------------- */
 .hello {
@@ -667,28 +627,6 @@ main.wrap {
 }
 .warn {
 	color: var(--amber);
-}
-.kv {
-	display: grid;
-	gap: 8px;
-	margin-top: 12px;
-	font-size: 13px;
-}
-.kv div {
-	display: flex;
-	justify-content: space-between;
-	gap: 12px;
-	border-top: 1px solid var(--line);
-	padding-top: 8px;
-}
-.kv span:first-child {
-	color: var(--muted);
-}
-.big-rate {
-	font-size: 28px;
-	font-weight: 700;
-	letter-spacing: -0.02em;
-	margin-top: 10px;
 }
 select,
 input[type="text"],
@@ -958,14 +896,6 @@ details.card[open] > summary {
 .settings > .card {
 	margin: 0;
 }
-.settings > .wide {
-	grid-column: 1 / -1;
-}
-.data-grid {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 0 40px;
-}
 /* Connection: compact, so Save and Test connection stay above the fold on a laptop. */
 #connCard .field {
 	margin-top: 14px;
@@ -1005,11 +935,6 @@ details.card[open] > summary {
 #connCard .account {
 	color: var(--text);
 	font-weight: 600;
-}
-/* Team web app vs. the sheet's own script: only one set of fields shows. */
-#connCard.own .team-only,
-#connCard:not(.own) .own-only {
-	display: none;
 }
 #connCard details.advanced {
 	margin-top: 18px;
@@ -1055,9 +980,6 @@ details.card[open] > summary {
 	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 	font-weight: 600;
 	font-size: 13.5px;
-}
-:root[data-theme="light"] .savebar {
-	box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
 }
 .savebar .dot {
 	width: 8px;
@@ -1155,7 +1077,7 @@ details.card[open] > summary {
 .msg.bad {
 	color: var(--red);
 }
-pre.code {
+code {
 	font: 12px/1.5 var(--mono);
 	background: var(--input);
 	border: 1px solid var(--line);
@@ -1204,8 +1126,7 @@ code {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 	.cols,
-	.settings,
-	.data-grid {
+	.settings {
 		grid-template-columns: minmax(0, 1fr);
 	}
 }
@@ -1228,5 +1149,46 @@ code {
 	.status,
 	#pause span {
 		display: none;
+	}
+}
+
+/* Pace & limits on the Outreach page: folded until you open it. */
+details.pace-card[open] > summary {
+	margin-bottom: 20px;
+}
+
+.ac-state {
+	font-size: 12.5px;
+	color: var(--muted);
+}
+
+/* Outreach page: Rows | Message, then Pace & limits | Who accepted — each pair the same height. */
+.grid2 {
+	display: grid;
+	grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+	gap: 16px;
+	align-items: stretch;
+}
+.grid2 > .card {
+	margin: 0;
+}
+.grid2 > .card .table-wrap {
+	max-height: 640px;
+	overflow: auto;
+}
+.grid2 .card-head {
+	flex-wrap: nowrap;
+	gap: 8px;
+}
+.grid2 .card-head .btn {
+	flex: none;
+	white-space: nowrap;
+}
+.grid2 + details.card {
+	margin-top: 16px;
+}
+@media (max-width: 1080px) {
+	.grid2 {
+		grid-template-columns: minmax(0, 1fr);
 	}
 }

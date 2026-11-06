@@ -417,7 +417,7 @@ const ReplySync = (() => {
 			if (r.transient) await noteNetworkFailure();
 			return { status, sent: 0, error: true };
 		}
-		// "tab not found", "missing column: …", "wrong key", deployment problems: every
+		// "tab not found", "missing column: …", deployment problems: every
 		// conversation would fail the same way, so the sync stops.
 		return { status, sent: 0, fatal: true };
 	}

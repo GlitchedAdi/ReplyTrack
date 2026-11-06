@@ -1,7 +1,7 @@
 // ReplyTrack — the one service worker. The parts live in bg/ (each file says what it keeps):
 //   team-config.js   the team web app URL and template link (filled in by the team lead)
 //   bg/common.js     helpers, the two logs ([Outreach] / [ReplySync])
-//   bg/sheet.js      your Google Sheet (team web app or your sheet's own script, write outbox)
+//   bg/sheet.js      your Google Sheet (team web app, write outbox)
 //   bg/lock.js       one thing at a time on LinkedIn
 //   bg/linkedin.js   the minimized LinkedIn worker tab (outreach.js runs there)
 //   bg/outreach.js   connection requests from your sheet's rows
@@ -9,6 +9,7 @@
 //   bg/accepted.js   twice a day: who accepted → "Accepted but not replied"
 //   bg/admin.js      Admin Replies: the "To send" list and sending one, when you say so
 //   bg/control.js    Pause everything / Start again
+//   scraper/         the SalesNav Scraper (loaded at the end); bg/scrapesync.js sends its leads to the SCRAP tab
 importScripts(
 	"team-config.js",
 	"shared.js",
@@ -38,7 +39,6 @@ const HANDLERS = {
 	OR_STOP: () => Outreach.stopRun().then(() => ({ ok: true })),
 	OR_LOAD: () => Outreach.loadSheet(),
 	OR_COUNTS: () => Outreach.counts(),
-	OR_IMPORT: m => Outreach.importHistory(m.entries),
 	AC_CHECK: () => Accepted.run("Check now button"),
 	// Admin Replies (popup "To send")
 	AD_REFRESH: m => Admin.refresh({ force: !!m.force }),
@@ -99,6 +99,26 @@ async function openDashboard(section) {
 chrome.action.onClicked.addListener(() => openDashboard().catch(e => console.warn("[ReplySync] dashboard:", e)));
 
 // ---------------------------------------------------------------------------
+// The SalesNav Scraper (scraper/): on a Sales Navigator page or a LinkedIn profile the
+// toolbar icon opens the scraper's popup (it works on the tab you're looking at); on every
+// other page it opens the dashboard (onClicked above only fires when there's no popup).
+// ---------------------------------------------------------------------------
+const SCRAPER_POPUP = "scraper/popup.html";
+const SCRAPER_PAGE_RE = /^https:\/\/www\.linkedin\.com\/(sales\/|in\/)/;
+function setPopupFor(tab) {
+	if (!tab || tab.id == null || tab.id < 0) return;
+	const popup = SCRAPER_PAGE_RE.test(tab.url || tab.pendingUrl || "") ? SCRAPER_POPUP : "";
+	chrome.action.setPopup({ tabId: tab.id, popup }).catch(() => {});
+}
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+	if (info.url || info.status === "loading" || info.status === "complete") setPopupFor(tab);
+});
+chrome.tabs.onActivated.addListener(({ tabId }) => chrome.tabs.get(tabId).then(setPopupFor, () => {}));
+chrome.tabs.query({ url: "https://www.linkedin.com/*" }).then(tabs => tabs.forEach(setPopupFor), () => {});
+
+importScripts("scraper/background.js", "scraper/export-cols.js", "bg/scrapesync.js", "bg/scraperguard.js");
+
+// ---------------------------------------------------------------------------
 // Alarms, startup, install, idle
 // ---------------------------------------------------------------------------
 async function ensureAlarms() {
@@ -120,6 +140,7 @@ chrome.alarms.onAlarm.addListener(alarm => {
 	if (alarm.name === TICK_ALARM) {
 		Accepted.maybeRun("schedule").catch(e => console.warn("[Outreach] accepted check:", e));
 		Sheet.flush().catch(e => console.warn("[ReplySync] outbox:", e));
+		ScrapeSync.flush().catch(e => console.warn("[Scraper] sheet:", e)); // in case a change was missed
 	}
 	if (alarm.name === Sheet.RETRY_ALARM) Sheet.flush().catch(e => console.warn("[ReplySync] outbox:", e));
 });
@@ -132,6 +153,8 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.runtime.onInstalled.addListener(async details => {
 	try {
 		await ensureAlarms();
+		// Settings of the old "own script" set-up (removed in 2.3).
+		await chrome.storage.sync.remove(["mode", "scriptUrl", "secretKey", "useGoogleLogin"]);
 		const settings = await Sheet.settings();
 		if (details.reason === "install" && !Sheet.configured(settings)) await openDashboard("settings");
 		else await ReplySync.ensureSyncTab(`extension ${details.reason}`);

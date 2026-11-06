@@ -28,7 +28,7 @@
 		pauseMin: 5, // pause before the next profile, after a request (s)
 		pauseMax: 10,
 		breakEvery: 25, // 1–3 min break after about this many requests (0 = off)
-		dailyCap: 500, // auto-stop after this many requests a day (0 = off)
+		dailyCap: 1000, // one daily LinkedIn limit: connection requests + scraped profiles together (0 = off)
 	};
 	// Fixed timings (seconds), shown on the page
 	const SKIP_PAUSE = [3, 6]; // after a profile visit that sent nothing
@@ -42,67 +42,6 @@
 		return avg(st.readMin, st.readMax) + avg(st.pauseMin, st.pauseMax) + REQUEST_S + brk;
 	}
 
-	// -------------------------------------------------------------------------
-	// CSV (RFC 4180: quoted fields, "" escapes, line breaks inside quotes) — for
-	// "Import sent history" (the old extension's Export CSV) and Export CSV.
-	// -------------------------------------------------------------------------
-	function sniffDelimiter(text) {
-		const first = text.slice(0, 5000).split(/\r?\n/)[0] || "";
-		let best = ",";
-		let bestN = -1;
-		for (const d of [",", ";", "\t", "|"]) {
-			let n = 0;
-			let q = false;
-			for (const ch of first) {
-				if (ch === '"') q = !q;
-				else if (ch === d && !q) n++;
-			}
-			if (n > bestN) {
-				best = d;
-				bestN = n;
-			}
-		}
-		return best;
-	}
-
-	function parseCSV(text) {
-		text = String(text || "").replace(/^﻿/, "");
-		const d = sniffDelimiter(text);
-		const rows = [];
-		let row = [];
-		let f = "";
-		let q = false;
-		for (let i = 0; i < text.length; i++) {
-			const c = text[i];
-			if (q) {
-				if (c === '"') {
-					if (text[i + 1] === '"') {
-						f += '"';
-						i++;
-					} else q = false;
-				} else f += c;
-			} else if (c === '"') q = true;
-			else if (c === d) {
-				row.push(f);
-				f = "";
-			} else if (c === "\n" || c === "\r") {
-				if (c === "\r" && text[i + 1] === "\n") i++;
-				row.push(f);
-				f = "";
-				if (row.some(x => x !== "")) rows.push(row);
-				row = [];
-			} else f += c;
-		}
-		row.push(f);
-		if (row.some(x => x !== "")) rows.push(row);
-		return rows;
-	}
-
-	function csvCell(v) {
-		let s = String(v == null ? "" : v).slice(0, 32000);
-		if (/^[=+\-@]/.test(s)) s = " " + s; // Excel would treat it as a formula
-		return `"${s.replace(/"/g, '""')}"`;
-	}
 
 	// -------------------------------------------------------------------------
 	// Profile ids: public vanity (/in/<name>) or Sales Nav member id (ACwAA…)
@@ -135,18 +74,14 @@
 	const missingText = m => `No ${m.name} column — ${m.off}.`;
 
 	// -------------------------------------------------------------------------
-	// Connection settings (storage.sync). Two set-ups:
-	//   "team" — the team web app (team-config.js, or Settings → Advanced) and your sheet's
-	//            link. Requests carry your Google login; no key.
-	//   "own"  — your sheet's own script (Code.gs inside your sheet): its URL and secret key.
-	// Saved settings without a mode (from before 2.2) that have a URL and a key are "own".
+	// Connection settings (storage.sync): the team web app (team-config.js, or Settings →
+	// Advanced) and your sheet's link. Requests carry your Google login.
 	// -------------------------------------------------------------------------
-	const SETTINGS_DEFAULTS = { mode: "", tabName: "", sheetUrl: "", teamUrl: "", scriptUrl: "", secretKey: "", useGoogleLogin: false };
+	const SETTINGS_DEFAULTS = { tabName: "", sheetUrl: "", teamUrl: "" };
 	const DEFAULT_TAB = "MY LEADS";
 	// https://script.google.com/macros/s/<id>/exec  or  …/a/macros/<domain>/s/<id>/exec
 	const WEB_APP_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]+\/exec$/;
 	const teamConfig = () => globalThis.RT_TEAM || {};
-	const modeOf = c => (c.mode === "team" || c.mode === "own" ? c.mode : c.scriptUrl && c.secretKey ? "own" : "team");
 	const cleanUrl = u =>
 		String(u || "")
 			.trim()
@@ -163,18 +98,14 @@
 	// Everything a request needs, from the saved (or typed) settings.
 	function connection(c) {
 		c = { ...SETTINGS_DEFAULTS, ...(c || {}) };
-		const mode = modeOf(c);
 		return {
-			mode,
 			tabName: String(c.tabName || "").trim() || DEFAULT_TAB,
 			sheetUrl: String(c.sheetUrl || "").trim(),
 			sheetId: sheetIdOf(c.sheetUrl),
-			url: mode === "team" ? teamUrlOf(c) : cleanUrl(c.scriptUrl),
-			secretKey: String(c.secretKey || "").trim(),
-			googleLogin: mode === "team" || !!c.useGoogleLogin,
+			url: teamUrlOf(c),
 		};
 	}
-	const isReady = k => !!(k.tabName && k.url && (k.mode === "team" ? k.sheetId : k.secretKey));
+	const isReady = k => !!(k.tabName && k.url && k.sheetId);
 	const isConfigured = c => isReady(connection(c));
 
 	// -------------------------------------------------------------------------
@@ -247,7 +178,7 @@
 	// Is the note set up? → { col } | { typed: true } | { none: true } | { error }
 	function noteSetup(st, header) {
 		if (st.noteMode === "none") return { none: true };
-		if (st.noteMode === "typed") return String(st.noteText || "").trim() ? { typed: true } : { error: "Type your note in Settings first." };
+		if (st.noteMode === "typed") return String(st.noteText || "").trim() ? { typed: true } : { error: "Type your note on the Outreach page first." };
 		const col = findCol(header || [], COLUMNS.message);
 		if (col < 0) return { error: `There's no “${COLUMNS.message}” column in your sheet.` };
 		return { col };
@@ -308,9 +239,6 @@
 		DEFAULTS,
 		SKIP_PAUSE,
 		BREAK_S,
-		secondsPerRequest,
-		parseCSV,
-		csvCell,
 		idFromCell,
 		norm,
 		findCol,
@@ -322,7 +250,6 @@
 		DEFAULT_TAB,
 		WEB_APP_RE,
 		teamConfig,
-		modeOf,
 		sheetIdOf,
 		connection,
 		isReady,
