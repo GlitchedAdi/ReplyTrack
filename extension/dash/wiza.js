@@ -1,10 +1,10 @@
-// Prepare WizaTool uploads from the scraper's saved leads and profile details.
+// Load the Wiza queue from the connected spreadsheet's SCRAP tab.
 (() => {
 	const BATCH_SIZE = 2000; // WizaTool's default upload limit
 	const STORAGE_KEY = "wizaPort";
-	const MEMBER_ID = /^A(?:Co|Cw|EM)[A-Za-z0-9_-]{20,}$/;
 	const batch = $("wizaBatch");
 	const download = $("wizaExport");
+	const refreshButton = $("wizaRefresh");
 	const status = $("wizaStatus");
 	const port = $("wizaPort");
 	const connect = $("wizaConnect");
@@ -16,31 +16,11 @@
 	let submitting = false;
 	let pending;
 	let counts = {};
-	let refreshTimer;
+	let sheetId;
+	let loadError = "";
+	let loading = false;
 	let revision = 0;
 	let dirty = true;
-
-	function profileSlug(value) {
-		try {
-			const url = new URL(value);
-			if (!/^https?:$/.test(url.protocol) || !/(^|\.)linkedin\.com$/i.test(url.hostname)) return "";
-			const match = /^\/in\/([^/]+)\/?$/i.exec(url.pathname);
-			return match ? decodeURIComponent(match[1]) : "";
-		} catch {
-			return "";
-		}
-	}
-
-	function profileUrl(lead) {
-		const slugs = [lead.vanityUrl, lead.publicProfileUrl, lead.defaultProfileUrl].map(profileSlug);
-		slugs.push(lead.memberId || "");
-		const valid = slugs.filter(value => /^[\p{L}\p{N}_.-]+$/u.test(value) && value !== "." && value !== "..");
-		const slug = valid.find(value => !MEMBER_ID.test(value)) || valid[0];
-		if (!slug) return "";
-		// LinkedIn's opaque member IDs are case-sensitive. Public profile slugs aren't.
-		const normalized = MEMBER_ID.test(slug) ? slug : slug.toLowerCase();
-		return `https://www.linkedin.com/in/${encodeURIComponent(normalized)}/`;
-	}
 
 	function renderBatches() {
 		for (const [id, count] of Object.entries({ wizaEligible: profiles.length, ...counts })) $(id).textContent = count.toLocaleString();
@@ -57,60 +37,57 @@
 		}
 		if (count) batch.value = Math.min(selected, count - 1);
 		batch.hidden = $("wizaBatchLabel").hidden = count < 2;
-		download.disabled = !profiles.length || !!job.id || submitting;
-		status.textContent = job.status || (profiles.length ? `${plural(profiles.length, "unique profile", "unique profiles")} available.` : "No LinkedIn profile URLs are available from captured leads yet.");
+		download.disabled = loading || !!job.id || submitting;
+		refreshButton.disabled = loading || submitting;
+		status.textContent = loading ? "Reading profiles from SCRAP…" : loadError || job.status || (profiles.length ? plural(profiles.length, "unique profile", "unique profiles") + " available in SCRAP." : "Paste LinkedIn profile links under LinkedIn Profile in SCRAP, then run the lookup.");
 	}
 
 	async function refresh() {
 		dirty = false;
 		const current = ++revision;
-		try {
-			const { scrapedLeads = [] } = await chrome.storage.local.get("scrapedLeads");
-			const keys = scrapedLeads.map(lead => "p:" + (lead.memberId || `${lead.name}|${lead.company}`).toLowerCase());
-			const resultKeys = keys.map(key => "wiza:" + key.slice(2));
-			const details = keys.length ? await chrome.storage.local.get([...new Set([...keys, ...resultKeys])]) : {};
-			if (current !== revision) return;
-			const byUrl = new Map();
-			scrapedLeads.forEach((lead, i) => {
-				const url = profileUrl({ ...lead, ...details[keys[i]] });
-				if (!url) return;
-				if (!byUrl.has(url)) byUrl.set(url, []);
-				byUrl.get(url).push(keys[i].slice(2));
-			});
-			profiles = Array.from(byUrl, ([url, keys]) => ({ url, keys }));
-			counts = { wizaChecked: 0, wizaFound: 0, wizaEmails: 0, wizaPhones: 0 };
-			for (const profile of profiles) {
-				const results = profile.keys.map(key => details["wiza:" + key]).filter(Boolean);
-				const hasEmail = results.some(result => result.email);
-				const hasPhone = results.some(result => result.phone);
-				counts.wizaChecked += Number(results.length > 0);
-				counts.wizaFound += Number(hasEmail || hasPhone);
-				counts.wizaEmails += Number(hasEmail);
-				counts.wizaPhones += Number(hasPhone);
-			}
+		loading = true;
+		loadError = "";
+		renderBatches();
+		const result = await send({ type: "WIZA_PROFILES" });
+		if (current !== revision) return;
+		loading = false;
+		if (!result.ok) {
+			loadError = result.error || "Could not read profiles from SCRAP.";
+			profiles = [];
+			counts = {};
+			for (const id of ["wizaChecked", "wizaFound", "wizaEmails", "wizaPhones"]) $(id).textContent = "0";
 			renderBatches();
-		} catch {
-			if (current !== revision) return;
-			download.disabled = true;
-			status.textContent = "Could not read captured leads. Reopen the dashboard to try again.";
+			return;
 		}
+		sheetId = result.sheetId;
+		profiles = result.profiles;
+		counts = {
+			wizaChecked: profiles.filter(profile => profile.contact).length,
+			wizaFound: profiles.filter(profile => profile.contact?.email || profile.contact?.phone).length,
+			wizaEmails: profiles.filter(profile => profile.contact?.email).length,
+			wizaPhones: profiles.filter(profile => profile.contact?.phone).length
+		};
+		renderBatches();
+		return true;
 	}
 
 	onRender(() => {
 		if (tab === "wiza" && dirty) refresh();
+		if (tab !== "wiza") dirty = true;
 	});
 	if (tab === "wiza") refresh();
+	refreshButton.addEventListener("click", refresh);
 	chrome.storage.onChanged.addListener((changes, area) => {
 		if (area === "local" && changes.rtWizaJob) {
+			const finished = job.id && !changes.rtWizaJob.newValue?.id;
 			job = changes.rtWizaJob.newValue || {};
-			renderBatches();
+			if (finished && tab === "wiza") refresh();
+			else renderBatches();
 		}
-		if (area !== "local" || !(changes.scrapedLeads || Object.keys(changes).some(key => key.startsWith("p:") || key.startsWith("wiza:")))) return;
-		++revision;
-		dirty = true;
-		download.disabled = true;
-		clearTimeout(refreshTimer);
-		if (tab === "wiza") refreshTimer = setTimeout(() => { if (dirty) refresh(); }, 150);
+		if (area === "sync" && (changes.sheetUrl || changes.teamUrl)) {
+			dirty = true;
+			if (tab === "wiza") refresh();
+		}
 	});
 
 	async function runLookup(signingIn = false) {
@@ -118,8 +95,6 @@
 		connect.disabled = true;
 		renderBatches();
 		try {
-			const allowed = await chrome.permissions.request({ origins: ["http://127.0.0.1/*"] });
-			if (!allowed) throw new Error("Allow local WizaTool access to run the lookup.");
 			const connection = await send({
 				type: "WIZA_CONNECT", port: pending.port,
 				...(signingIn ? { email: email.value, password: password.value } : {})
@@ -142,13 +117,30 @@
 		}
 	}
 
-	download.addEventListener("click", () => {
-		const index = Number(batch.value);
-		const rows = profiles.slice(index * BATCH_SIZE, (index + 1) * BATCH_SIZE);
-		if (!rows.length || job.id || submitting || !port.validity.valid) return;
-		if (!confirm("Run Wiza contact lookups for " + plural(rows.length, "profile", "profiles") + " and save the results to SCRAP?")) return;
-		pending = { port: port.valueAsNumber, profiles: rows };
-		runLookup();
+	download.addEventListener("click", async () => {
+		if (loading || job.id || submitting || !port.reportValidity()) return;
+		const lookupPort = port.valueAsNumber;
+		pending = null;
+		credentials.hidden = true;
+		job = {};
+		loadError = "";
+		submitting = true;
+		renderBatches();
+		try {
+			const allowed = await chrome.permissions.request({ origins: ["http://127.0.0.1/*"] });
+			if (!allowed) throw new Error("Allow local WizaTool access to run the lookup.");
+			if (!(await refresh()) || job.id) return;
+			const index = Number(batch.value);
+			const rows = profiles.slice(index * BATCH_SIZE, (index + 1) * BATCH_SIZE);
+			if (!rows.length) return;
+			pending = { port: lookupPort, profiles: rows.map(({ url }) => ({ url })), sheetId };
+			await runLookup();
+		} catch (error) {
+			job = { ...job, status: error.message };
+		} finally {
+			submitting = false;
+			renderBatches();
+		}
 	});
 
 	chrome.storage.local.get([STORAGE_KEY, "rtWizaJob"]).then(saved => {

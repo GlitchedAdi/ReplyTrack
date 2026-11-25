@@ -99,8 +99,8 @@ const Sheet = (() => {
 	}
 
 	// One request with the saved settings. Notes the banner state.
-	async function call(action, data = {}) {
-		const s = await settings();
+	async function call(action, data = {}, target) {
+		const s = target || await settings();
 		if (!configured(s)) return { ok: false, error: "not set up", setup: true };
 		const r = await post({ ...data, action }, s);
 		if (r.ok) await noteAccount(r.account);

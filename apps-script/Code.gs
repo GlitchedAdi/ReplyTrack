@@ -151,6 +151,8 @@ var ACTIONS = {
   addReplies: { run: addReplies_, write: true },
   clearAdmin: { run: clearAdmin_, write: true },
   saveScraped: { run: saveScraped_, write: true, ownTab: true },
+  readWizaProfiles: { run: readWizaProfiles_, write: false, ownTab: true },
+  writeWizaContacts: { run: writeWizaContacts_, write: true, ownTab: true },
 };
 
 function doPost(e) {
@@ -476,6 +478,82 @@ var SCRAPE_KEY = 'key';            // first column: which person a row is (the s
 var SCRAPE_MAX_ROWS = 500;         // per request
 var SCRAPE_IN_MY_LEADS = 'inMyLeads';   // "yes" when this person is also in MY LEADS
 var SCRAPE_URL_COLUMNS = ['linkedInProfileUrl', 'defaultProfileUrl', 'profileUrl'];  // their LinkedIn links
+
+var WIZA_URL_COLUMNS = SCRAPE_URL_COLUMNS.concat(['LinkedIn Profile', 'LinkedIn URL', 'LinkedIn Profile URL', 'LinkedIn Profile Link', 'Profile URL', 'Profile Link']);
+var WIZA_CONTACT_COLUMNS = ['Work Email', 'Personal Email', 'Phone Number 1', 'Phone Number 2', 'email', 'phone'];
+
+// A row can contain several URLs for the same profile, such as an ID URL and a public slug.
+function wizaSheetRows_(ss) {
+  var sheet = findTab_(ss, SCRAPE_TAB);
+  var rows = new Map();
+  var candidates = new Set();
+  if (!sheet || sheet.getLastRow() < 1 || sheet.getLastColumn() < 1) return { sheet: sheet, rows: rows, candidates: candidates, headers: [] };
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  var last = sheet.getLastRow();
+  var columns = WIZA_URL_COLUMNS.map(function (name) { return findColumn_(headers, name); })
+    .filter(function (column, i, all) { return column >= 0 && all.indexOf(column) === i; });
+  var byRow = new Map();
+  if (last > 1) columns.forEach(function (column) {
+    var range = sheet.getRange(2, column + 1, last - 1, 1);
+    var values = range.getDisplayValues();
+    var rich = range.getRichTextValues();
+    var formulas = range.getFormulas();
+    values.forEach(function (cell, i) {
+      var profile = wizaProfileKey_(profileUrl_(cell[0], rich[i][0], formulas[i][0]));
+      if (!profile) return;
+      var row = i + 2;
+      if (!rows.has(profile)) rows.set(profile, row);
+      else if (rows.get(profile) !== row) rows.set(profile, 0);
+      if (!byRow.has(row)) byRow.set(row, []);
+      byRow.get(row).push(profile);
+    });
+  });
+  byRow.forEach(function (profiles, row) {
+    var unique = profiles.filter(function (profile) { return rows.get(profile) === row; });
+    var chosen = unique.find(function (profile) { return !/^A(?:Co|Cw|EM)[A-Za-z0-9_-]{20,}$/.test(profile); }) || unique[0];
+    if (chosen) candidates.add(chosen);
+  });
+  return { sheet: sheet, rows: rows, candidates: candidates, headers: headers };
+}
+
+function readWizaProfiles_(ss) {
+  var found = wizaSheetRows_(ss);
+  return { ok: true, urls: Array.from(found.candidates, function (profile) {
+    return 'https://www.linkedin.com/in/' + encodeURIComponent(profile) + '/';
+  }) };
+}
+
+function writeWizaContacts_(ss, data) {
+  if (!Array.isArray(data.contacts) || data.contacts.length > SCRAPE_MAX_ROWS) return { ok: false, error: 'bad request' };
+  var found = wizaSheetRows_(ss);
+  var written = 0;
+  var held = 0;
+  var columns;
+  data.contacts.forEach(function (contact) {
+    var row = contact && found.rows.get(wizaProfileKey_(contact.url));
+    if (!row) { held++; return; }
+    if (!columns) columns = WIZA_CONTACT_COLUMNS.map(function (name) {
+      var col = findColumn_(found.headers, name);
+      if (col >= 0) return col + 1;
+      found.headers.push(name);
+      found.sheet.getRange(1, found.headers.length).setValue(name);
+      return found.headers.length;
+    });
+    var phones = String(contact.phone || '').split('; ');
+    var values = [contact.workEmail, contact.personalEmail, phones[0], phones[1], contact.email, contact.phone];
+    columns.forEach(function (column, i) {
+      if (typeof values[i] !== 'string' || !values[i]) return;
+      var cell = found.sheet.getRange(row, column);
+      if (cell.getFormula()) return;
+      var existing = cell.getDisplayValue();
+      var value = i === 2 || i === 3 ? existing || values[i] :
+        Array.from(new Set([existing, values[i]].filter(Boolean).join('; ').split('; '))).join('; ');
+      if (value !== existing) setText_(cell, value.slice(0, CELL_LIMIT));
+    });
+    written++;
+  });
+  return { ok: true, written: written, held: held };
+}
 
 // The people in MY LEADS (the tab ReplyTrack works from), by profile key → true. {} if no such tab.
 function myLeadKeys_(ss, tabName) {

@@ -52,6 +52,7 @@ const HANDLERS = {
 	RT_RESUME: () => Control.resume(),
 	WIZA_START: m => Wiza.start(m),
 	WIZA_CONNECT: m => Wiza.connect(m),
+	WIZA_PROFILES: () => Wiza.listProfiles(),
 };
 // Reply sync (content.js, popup, settings) — the message names ReplyTrack always used.
 for (const t of ReplySync.TYPES) HANDLERS[t] = (m, sender) => ReplySync.handle(m, sender);

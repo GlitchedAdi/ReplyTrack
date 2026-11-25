@@ -290,9 +290,9 @@
 			</section>
 
 			<section id="page-wiza" class="page">
-				<div class="page-head"><div><h1>Wiza contact lookup</h1><p>Find contact details for captured LinkedIn profiles and sync them to SCRAP.</p></div></div>
+				<div class="page-head"><div><h1>Wiza contact lookup</h1><p>Find contact details for LinkedIn profiles in SCRAP.</p></div></div>
 				<div class="stats wiza-stats">
-					<div class="card stat"><div class="label">Eligible profiles</div><div class="num" id="wizaEligible">0</div><div class="cap">Captured profiles with a LinkedIn URL</div></div>
+					<div class="card stat"><div class="label">Eligible profiles</div><div class="num" id="wizaEligible">0</div><div class="cap">Unique LinkedIn profiles in SCRAP</div></div>
 					<div class="card stat"><div class="label">Profiles checked</div><div class="num" id="wizaChecked">0</div><div class="cap">Completed Wiza lookups</div></div>
 					<div class="card stat"><div class="label">Contacts found</div><div class="num" id="wizaFound">0</div><div class="cap">Profiles with an email or phone number</div></div>
 					<div class="card stat"><div class="label">With email</div><div class="num" id="wizaEmails">0</div><div class="cap">Profiles with an email address</div></div>
@@ -304,6 +304,7 @@
 						<label for="wizaBatch" id="wizaBatchLabel" hidden>Lookup batch</label>
 						<select id="wizaBatch" aria-labelledby="wizaBatchLabel" hidden></select>
 						<button class="btn secondary" id="wizaExport" disabled>Run Wiza lookup</button>
+						<button class="btn secondary" id="wizaRefresh" type="button">Refresh profiles</button>
 					</div>
 					<p class="hint" id="wizaStatus" role="status"></p>
 					<details class="wiza-actions">
