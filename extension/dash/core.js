@@ -128,7 +128,7 @@ function render() {
 // ---------------------------------------------------------------------------
 // Tabs (#overview, #outreach, #replies, #tosend, #scraper, #settings)
 // ---------------------------------------------------------------------------
-const TABS = ["overview", "outreach", "replies", "tosend", "scraper", "settings"];
+const TABS = ["overview", "outreach", "replies", "tosend", "scraper", "wiza", "settings"];
 let tab = "overview";
 function showTab(name) {
 	if (!TABS.includes(name)) name = "overview";

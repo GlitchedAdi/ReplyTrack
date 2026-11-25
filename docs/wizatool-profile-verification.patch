@@ -1,0 +1,56 @@
+diff --git a/src/profile.js b/src/profile.js
+index 439a48f..bf24193 100644
+--- a/src/profile.js
++++ b/src/profile.js
+@@ -1,5 +1,6 @@
++import { normalizeLinkedInUrl } from './input.js';
+ import { checkLinkedInPage } from './safety.js';
+-import { nameFromTitle, panelIsStale, textContainsName } from './names.js';
++import { nameFromTitle, normalizeName, panelIsStale, textContainsName } from './names.js';
+ import { randomBetween, sleep } from './pacing.js';
+
+ export const SELF_CHECK_STEPS = [
+@@ -195,6 +196,10 @@ export async function processProfile({ session, page, config, url, previousEmail
+     if (check.stop) return finish('stopped', { stop: check.stop });
+     if (check.unavailable) return finish('profile_unavailable', { note: check.unavailable });
+
++    const requestedProfile = normalizeLinkedInUrl(url);
++    const correctProfile = () => requestedProfile && normalizeLinkedInUrl(page.url()) === requestedProfile;
++    if (!correctProfile()) return finish('name_mismatch', { note: 'LinkedIn opened a different or unverifiable profile URL' });
++
+     await page.bringToFront();
+     const panel = await session.ensurePanel();
+     step('launcher found', panel.launcherOk, panel.launcherNote);
+@@ -268,6 +273,9 @@ export async function processProfile({ session, page, config, url, previousEmail
+       ctx.offered = [...new Set([...preSnap.parsed.offered, ...domOffered])];
+       ctx.notes.push(...(await session.ensureChecked(ctx.offered)));
+       const ready = await session.read();
++      if (!correctProfile() || normalizeName(ready.parsed.panelName) !== normalizeName(ctx.linkedinName)) {
++        return { status: 'name_mismatch', snap: ready, reason: 'Wiza panel identity changed before reveal' };
++      }
+       const button = ready.dom.reveal ?? preSnap.dom.reveal;
+       await session.clickReveal(button);
+       return waitForValues(session, config, { offered: ctx.offered, reveal: button, clickedAt: Date.now() });
+@@ -286,6 +294,13 @@ export async function processProfile({ session, page, config, url, previousEmail
+     ctx.parsed = outcome.snap.parsed;
+
+     const values = outcome.snap.parsed.values;
++    if (outcome.snap.parsed.valueCount > 0) {
++      const actualName = normalizeName(nameFromTitle(await page.title().catch(() => '')));
++      const revealedName = normalizeName(outcome.snap.parsed.panelName);
++      if (!correctProfile() || !actualName || actualName !== normalizeName(ctx.linkedinName) || actualName !== revealedName) {
++        return finish('name_mismatch', { note: 'LinkedIn profile or Wiza contact name could not be confirmed after reveal' });
++      }
++    }
+     const count = outcome.snap.parsed.valueCount;
+     const parsedOk = outcome.status === 'no_data' || count > 0;
+     step('values parsed', parsedOk, `${outcome.reason}; ${values.work.length} work, ${values.personal.length} personal, ${values.phones.length} phone(s)`);
+@@ -295,7 +310,7 @@ export async function processProfile({ session, page, config, url, previousEmail
+     if (key && previousEmailKey && key === previousEmailKey) {
+       return finish('same_as_previous', { note: 'emails are identical to the previous profile; nothing written' });
+     }
+-    const note = outcome.status === 'timeout' || outcome.status === 'no_data' ? outcome.reason : '';
++    const note = outcome.status === 'ok' ? 'ReplyTrack profile verified' : outcome.reason;
+     return finish(outcome.status, { values, note });
+   } catch (err) {
+     step(stage, false, err.message);

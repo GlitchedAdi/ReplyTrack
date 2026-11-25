@@ -539,6 +539,23 @@ function saveScraped_(ss, data) {
   var mineCol = columns.indexOf(SCRAPE_IN_MY_LEADS);
   var mine = mineCol >= 0 ? myLeadKeys_(ss, data.tab) : null;
   var urlCols = SCRAPE_URL_COLUMNS.map(function (c) { return columns.indexOf(c); }).filter(function (i) { return i >= 0; });
+  var wizaKeys = new Set(Array.isArray(data.wizaKeys) ? data.wizaKeys : []);
+  var wizaProfiles = data.wizaProfiles || {};
+  var rowsByProfile = {};
+  if (wizaKeys.size) {
+    var sheetUrlCols = SCRAPE_URL_COLUMNS.concat(['LinkedIn Profile', 'LinkedIn URL']).map(function (name) {
+      return colOf[headerKey_(name)] - 1;
+    }).filter(function (col) { return col >= 0; });
+    values2.forEach(function (r, i) {
+      sheetUrlCols.forEach(function (at) {
+        var profile = wizaProfileKey_(r[at]) || wizaProfileKey_(formulas2[i][at]);
+        if (!profile) return;
+        var row = i + 2;
+        if (!Object.prototype.hasOwnProperty.call(rowsByProfile, profile)) rowsByProfile[profile] = row;
+        else if (rowsByProfile[profile] !== row) rowsByProfile[profile] = 0;
+      });
+    });
+  }
 
   var count = { added: 0, updated: 0 };
   var changedRows = {};   // row number → true
@@ -553,6 +570,19 @@ function saveScraped_(ss, data) {
       incoming[mineCol] = hit ? 'yes' : '';
     }
     var row = rowOf[key];
+    var profileMatch = false;
+    if (wizaKeys.has(key) && wizaProfiles[key]) {
+      var verifiedProfile = wizaProfileKey_(wizaProfiles[key]);
+      var verifiedRow = verifiedProfile && rowsByProfile[verifiedProfile];
+      var incomingMatches = verifiedProfile && urlCols.some(function (i) { return wizaProfileKey_(incoming[i]) === verifiedProfile; });
+      if (!incomingMatches || verifiedRow === 0 || (row && row <= lastRow && row !== verifiedRow)) return;
+      if (!row && verifiedRow) {
+        row = verifiedRow;
+        profileMatch = true;
+      }
+    } else if (wizaKeys.has(key)) {
+      return; // This queued Wiza result predates profile verification.
+    }
     var isNew = !row;
     var out, formulas;
     if (isNew) {
@@ -567,11 +597,17 @@ function saveScraped_(ss, data) {
     var changed = isNew;
     columns.forEach(function (c, i) {
       var v = incoming[i];
+      var contactList = ['email', 'phone', 'Work Email', 'Personal Email'].indexOf(c) !== -1;
+      var contactColumn = contactList || c === 'Phone Number 1' || c === 'Phone Number 2';
+      if (profileMatch && !contactColumn) return;
       if (i === 0 && !isNew) return;                          // an existing row keeps its key as it is
       if (v == null || String(v).trim() === '') return;      // nothing new: keep what's there
       var j = colOf[headerKey_(c)] - 1;
       if (formulas[j]) return;                                // never over a formula
       var text = String(v).slice(0, CELL_LIMIT);
+      if (wizaKeys.has(key) && contactList && out[j]) {
+        text = Array.from(new Set(String(out[j]).split('; ').concat(text.split('; ')))).join('; ').slice(0, CELL_LIMIT);
+      }
       if (String(out[j]) === text) return;
       out[j] = text;
       changed = true;
@@ -789,6 +825,15 @@ function rowsFor_(ctx, profileUrl) {
 // "https://www.linkedin.com/in/Jane-Doe-123/?trk=x" -> "jane-doe-123"
 // Ignores http/https, www (or country subdomains), trailing slashes, query strings,
 // #fragments and URL encoding (%C3%A9 -> é). Case-insensitive.
+function wizaProfileKey_(value) {
+  var hit = String(value || '').match(/(?:^|["'=\s])https?:\/\/(?:[\w-]+\.)*linkedin\.com\/in\/([^\/?#\s"']+)/i);
+  if (!hit) return '';
+  var slug;
+  try { slug = decodeURIComponent(hit[1]); } catch (e) { return ''; }
+  if (!/^[\p{L}\p{N}_.-]+$/u.test(slug)) return '';
+  return /^A(?:Co|Cw|EM)[A-Za-z0-9_-]{20,}$/.test(slug) ? slug : slug.toLowerCase();
+}
+
 function profileKey_(value) {
   var s = String(value || '').trim();
   if (!s) return '';

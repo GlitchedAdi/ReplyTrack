@@ -28,6 +28,7 @@
 					<button data-tab="replies">Replies</button>
 					<button data-tab="tosend">To send <span class="count hidden" id="tabCount"></span></button>
 					<button data-tab="scraper">Scraper</button>
+					<button data-tab="wiza">Wiza</button>
 					<button data-tab="settings">Settings</button>
 				</nav>
 				<div class="top-right">
@@ -288,6 +289,42 @@
 				</p>
 			</section>
 
+			<section id="page-wiza" class="page">
+				<div class="page-head"><div><h1>Wiza contact lookup</h1><p>Find contact details for captured LinkedIn profiles and sync them to SCRAP.</p></div></div>
+				<div class="stats wiza-stats">
+					<div class="card stat"><div class="label">Eligible profiles</div><div class="num" id="wizaEligible">0</div><div class="cap">Captured profiles with a LinkedIn URL</div></div>
+					<div class="card stat"><div class="label">Profiles checked</div><div class="num" id="wizaChecked">0</div><div class="cap">Completed Wiza lookups</div></div>
+					<div class="card stat"><div class="label">Contacts found</div><div class="num" id="wizaFound">0</div><div class="cap">Profiles with an email or phone number</div></div>
+					<div class="card stat"><div class="label">With email</div><div class="num" id="wizaEmails">0</div><div class="cap">Profiles with an email address</div></div>
+					<div class="card stat"><div class="label">With phone</div><div class="num" id="wizaPhones">0</div><div class="cap">Profiles with a phone number</div></div>
+				</div>
+				<div class="card wiza-card">
+					<h2>Run a lookup</h2>
+					<div class="actions wiza-actions">
+						<label for="wizaBatch" id="wizaBatchLabel" hidden>Lookup batch</label>
+						<select id="wizaBatch" aria-labelledby="wizaBatchLabel" hidden></select>
+						<button class="btn secondary" id="wizaExport" disabled>Run Wiza lookup</button>
+					</div>
+					<p class="hint" id="wizaStatus" role="status"></p>
+					<details class="wiza-actions">
+						<summary>Local worker settings</summary>
+						<div class="actions wiza-actions">
+							<label for="wizaPort">WizaTool port</label>
+							<input type="number" id="wizaPort" value="3000" min="1" max="65535" required />
+						</div>
+					</details>
+					<form id="wizaOpenForm" hidden>
+						<div class="actions wiza-actions wiza-credentials">
+							<label for="wizaEmail">WizaTool email</label>
+							<input id="wizaEmail" type="email" autocomplete="username" required />
+							<label for="wizaPassword">Password</label>
+							<input id="wizaPassword" type="password" autocomplete="current-password" required />
+							<button class="btn secondary" id="wizaConnect" type="submit">Sign in and run lookup</button>
+						</div>
+					</form>
+				</div>
+			</section>
+
 			<!-- ================= Settings ================= -->
 			<section id="page-settings" class="page">
 				<div class="page-head">
@@ -362,6 +399,7 @@
 		<script src="dash/replies.js"></script>
 		<script src="dash/tosend.js"></script>
 		<script src="dash/scraper.js"></script>
+		<script src="dash/wiza.js"></script>
 		<script src="dash/settings.js"></script>
 	</body>
 </html>

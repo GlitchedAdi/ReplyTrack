@@ -126,3 +126,13 @@ Keep the pinned **LinkedIn Messaging** tab open, and keep the computer on during
 ✅ **It worked if**, after you restart your computer, Chrome opens by itself with the pinned LinkedIn tab, and the ReplyTrack pill says **Active**.
 
 **You're set up.** Click the ReplyTrack icon any time to open the dashboard. If something doesn't work, ask your team lead.
+
+## Look up scraped leads with WizaTool
+
+1. Start [WizaTool](https://github.com/piyushkunder11/extracter) using its launcher and complete its LinkedIn and Wiza sign-in setup.
+2. Open the **Wiza** tab next to **Scraper**. Choose a batch if shown, then click **Run Wiza lookup**. Allow local access and sign in there if prompted. If WizaTool uses a port other than **3000**, set it under **Local worker settings**.
+3. Keep the local worker running. The Wiza tab shows how many profiles are eligible, checked, and have contact details. ReplyTrack writes the results to the matching profiles in **SCRAP** after the lookup.
+
+SCRAP has separate **Work Email**, **Personal Email**, **Phone Number 1**, and **Phone Number 2** columns. Additional phone numbers remain in the combined `phone` column. ReplyTrack supports up to 2,000 profiles per Wiza job with WizaTool's default settings.
+
+For automatic contact writes, apply [the profile verification patch](docs/wizatool-profile-verification.patch) from the WizaTool checkout root with `git apply <path-to-patch>`, then restart WizaTool. Set WizaTool's result cache retention to **0 days** so the worker checks the live profile for these runs. ReplyTrack holds cached contacts and contacts without the worker's verification marker. Deploy the updated Apps Script before syncing results.

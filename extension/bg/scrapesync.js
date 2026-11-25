@@ -26,7 +26,13 @@ const ScrapeSync = (() => {
 		const X = globalThis.SNExport;
 		const have = new Set(X.FULL_COLUMNS.map(c => c[0]));
 		const extra = X.PB_COLUMNS.filter(c => !have.has(c[0]) && c[0] !== "name"); // "name" = fullName
-		cols = [["key", leadKey], ["inMyLeads", () => ""], ["requestSent", requestSent], ...X.FULL_COLUMNS, ...extra];
+		const wiza = [
+			["Work Email", l => l.wizaContact?.workEmail],
+			["Personal Email", l => l.wizaContact?.personalEmail],
+			["Phone Number 1", l => l.wizaContact?.phone?.split("; ")[0]],
+			["Phone Number 2", l => l.wizaContact?.phone?.split("; ")[1]],
+		];
+		cols = [["key", leadKey], ["inMyLeads", () => ""], ["requestSent", requestSent], ...X.FULL_COLUMNS, ...extra, ...wiza];
 		return cols;
 	}
 
@@ -55,7 +61,18 @@ const ScrapeSync = (() => {
 		running = (async () => {
 			if (!Sheet.configured(await Sheet.settings())) return; // sent once your sheet is connected
 			const all = await chrome.storage.local.get(null);
-			const leads = (all.scrapedLeads || []).map(l => ({ ...l, ...(all["p:" + leadKey(l)] || {}) }));
+			const leads = (all.scrapedLeads || []).map(l => {
+				const key = leadKey(l);
+				const lead = { ...l, ...all["p:" + key] };
+				const wiza = all["wiza:" + key];
+				if (!wiza?.url) return lead;
+				lead.wizaContact = wiza;
+				for (const field of ["email", "phone"]) {
+					const values = [lead[field], wiza[field]].flatMap(value => String(value || "").split("; ")).filter(Boolean);
+					lead[field] = [...new Set(values)].join("; ");
+				}
+				return lead;
+			});
 			if (!leads.length) return;
 			history = Object.fromEntries(Object.keys(all).filter(k => k.startsWith("h:")).map(k => [k, true]));
 			const c = columns();
@@ -72,7 +89,8 @@ const ScrapeSync = (() => {
 			const names = c.map(x => x[0]);
 			for (let i = 0; i < changed.length; i += BATCH) {
 				const part = changed.slice(i, i + BATCH);
-				await Sheet.enqueue("saveScraped", { columns: names, rows: part.map(x => x.row) }, `${plural(part.length, "scraped lead")} → SCRAP`);
+				const wizaProfiles = Object.fromEntries(part.map(x => x.row[0]).filter(key => all["wiza:" + key]?.url).map(key => [key, all["wiza:" + key].url]));
+				await Sheet.enqueue("saveScraped", { columns: names, rows: part.map(x => x.row), wizaKeys: Object.keys(wizaProfiles), wizaProfiles }, `${plural(part.length, "scraped lead")} → SCRAP`);
 				for (const x of part) sent[x.row[0]] = x.h;
 			}
 			await chrome.storage.local.set({ [SENT]: sent, [LAST]: { at: Date.now(), rows: changed.length } });

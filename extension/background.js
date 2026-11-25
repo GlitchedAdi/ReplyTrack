@@ -50,6 +50,8 @@ const HANDLERS = {
 	// Everything
 	RT_PAUSE: () => Control.pause(),
 	RT_RESUME: () => Control.resume(),
+	WIZA_START: m => Wiza.start(m),
+	WIZA_CONNECT: m => Wiza.connect(m),
 };
 // Reply sync (content.js, popup, settings) — the message names ReplyTrack always used.
 for (const t of ReplySync.TYPES) HANDLERS[t] = (m, sender) => ReplySync.handle(m, sender);
@@ -117,6 +119,7 @@ chrome.tabs.onActivated.addListener(({ tabId }) => chrome.tabs.get(tabId).then(s
 chrome.tabs.query({ url: "https://www.linkedin.com/*" }).then(tabs => tabs.forEach(setPopupFor), () => {});
 
 importScripts("scraper/background.js", "scraper/export-cols.js", "bg/scrapesync.js", "bg/scraperguard.js");
+importScripts("bg/wiza.js");
 
 // ---------------------------------------------------------------------------
 // Alarms, startup, install, idle
