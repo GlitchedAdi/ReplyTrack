@@ -87,6 +87,10 @@ function problemText(r, settings) {
 			return "The team web app isn't deployed the right way — it has to run as you (“Execute as: User accessing the web app”). Please tell your team lead.";
 		case "nosheet":
 			return "Paste your sheet link first.";
+		case "wrongsheet":
+			return `The team web app opened a DIFFERENT spreadsheet: “${r.sheetName || "?"}” (${r.sheetId}) — not the one in your sheet link (${S.sheetIdOf(settings.sheetUrl)}). ReplyTrack ignored its answer.\n\nThe Team web app URL (Settings → Advanced) most likely points to an old Code.gs attached to that spreadsheet. Click “Reset to default”, or ask your team lead for the current URL.`;
+		case "oldscript":
+			return "The team web app didn't say which spreadsheet it opened, so it's running an old Code.gs. An old Code.gs that is attached to a spreadsheet uses THAT spreadsheet and ignores your sheet link. ReplyTrack ignored its answer and writes nothing until this is fixed.\n\nCheck the Team web app URL in Settings → Advanced (or click “Reset to default”). If it is the team's URL, the team lead has to deploy the current Code.gs: Deploy → Manage deployments → edit → Version: New version → Deploy.";
 	}
 	if (e === "tab not found") return `Your sheet has no tab called “${settings.tabName}”. Check the spelling (spaces count).`;
 	if (/^missing column: /.test(e)) return `Row 1 of “${settings.tabName}” has no “${e.slice(16)}” column. It's needed — add it exactly as written.`;
@@ -102,7 +106,7 @@ async function testConnection(settings) {
 	}
 	const values = r.statusValues || [];
 	const fresh = Array.isArray(r.missing); // Code.gs from 2.2 on (older ones need every column)
-	const lines = [`Connected${r.account ? ` as ${r.account}` : ""}. Found the tab “${r.tab}” — ${fresh ? `${plural(r.rows, "row")} with a LinkedIn Profile` : `${plural(r.rows, "row")}, all the columns`}.`];
+	const lines = [`Connected to “${r.sheetName || "?"}” (spreadsheet ${r.sheetId})${r.account ? ` as ${r.account}` : ""}.`, `Found the tab “${r.tab}” — ${fresh ? `${plural(r.rows, "row")} with a LinkedIn Profile` : `${plural(r.rows, "row")}, all the columns`}.`];
 	lines.push(values.length ? `Outreach Status choices: ${values.join(" | ")}` : "⚠ No Outreach Status dropdown found — the status can't be updated.");
 	for (const v of ["Sent", "Replied"]) if (values.length && !values.some(x => S.norm(x) === S.norm(v))) lines.push(`⚠ “${v}” isn't in the dropdown, so it's never written.`);
 	for (const p of r.problems || []) lines.push(`⚠ ${p}`);

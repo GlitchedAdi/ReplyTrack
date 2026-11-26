@@ -19,6 +19,9 @@
 //   noedit   — it can open the sheet but not edit it
 //   deploy   — the team web app isn't deployed "Execute as: User accessing the web app"
 //   nosheet  — no sheet link
+//   wrongsheet — the web app answered from a different spreadsheet than the one in Settings
+//   oldscript  — the web app didn't say which spreadsheet it opened (a Code.gs older than 2.4,
+//                which, if attached to a spreadsheet, ignores the sheet link and uses that one)
 const Sheet = (() => {
 	const OUTBOX = "rtOutbox";
 	const ERROR_KEY = "rtSheetError";
@@ -75,7 +78,7 @@ const Sheet = (() => {
 					const j = JSON.parse(text);
 					if (!j || typeof j !== "object") return { ok: false, error: `unexpected answer: ${text.slice(0, 120)}` };
 					if (!j.ok) for (const [re, code] of CODES) if (re.test(String(j.error || ""))) j.code = code;
-					return j;
+					return checkSheet(j, s);
 				} catch (e) {
 					// The old ReplyTrack script answers in plain text ("ok", "tab not found").
 					return { ok: false, error: `unexpected answer "${text.slice(0, 80)}" — is the NEW Code.gs deployed?` };
@@ -91,6 +94,22 @@ const Sheet = (() => {
 		return { ok: false, error: `could not reach Apps Script (${lastError})`, transient: true };
 	}
 
+	// Every answer must come from the spreadsheet in Settings — never trust one that doesn't
+	// say which spreadsheet it opened, or names another one.
+	function checkSheet(j, s) {
+		if (j.sheetId) {
+			if (j.sheetId === s.sheetId) return j;
+			return { ok: false, code: "wrongsheet", account: j.account, sheetId: j.sheetId, sheetName: j.sheetName || "", error: `the team web app opened a different spreadsheet: “${j.sheetName || "?"}” (${j.sheetId}), not the one in Settings (${s.sheetId})` };
+		}
+		if (!j.ok) return j; // refused before opening any spreadsheet (bad request, permissions…)
+		return { ok: false, code: "oldscript", account: j.account, error: "the team web app didn't say which spreadsheet it opened — it's running an old Code.gs" };
+	}
+
+	// Writes wait until the web app has shown, once, that it opens the right spreadsheet
+	// (an old Code.gs would otherwise write into whatever spreadsheet it's attached to).
+	const READS = new Set(["ping", "read", "readWizaProfiles"]);
+	const checked = new Set();
+
 	// The Google account the team web app ran as (Settings shows it).
 	async function noteAccount(email) {
 		if (!email) return;
@@ -102,7 +121,15 @@ const Sheet = (() => {
 	async function call(action, data = {}, target) {
 		const s = target || await settings();
 		if (!configured(s)) return { ok: false, error: "not set up", setup: true };
-		const r = await post({ ...data, action }, s);
+		const key = s.url + " " + s.sheetId;
+		let r = null;
+		if (!READS.has(action) && !checked.has(key)) {
+			const p = await post({ action: "ping" }, s);
+			if (p.sheetId === s.sheetId) checked.add(key);
+			else r = p; // wrong or unknown spreadsheet, or no answer: not written (the outbox retries)
+		}
+		if (!r) r = await post({ ...data, action }, s);
+		if (r.sheetId === s.sheetId) checked.add(key);
 		if (r.ok) await noteAccount(r.account);
 		if (r.ok || ROW_ERRORS.test(r.error || "")) await chrome.storage.local.remove(ERROR_KEY);
 		else await chrome.storage.local.set({ [ERROR_KEY]: { at: Date.now(), error: r.error || "no answer", code: r.code || "", account: r.account || "" } });

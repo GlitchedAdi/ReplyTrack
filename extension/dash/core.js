@@ -216,6 +216,9 @@ function sheetProblem(e) {
 			return [`${a || "This Google account"} can't edit your sheet — check settings`, more];
 		case "deploy":
 			return ["The team web app isn't set up right — tell your team lead", "It must be deployed with “Execute as: User accessing the web app”."];
+		case "wrongsheet":
+		case "oldscript":
+			return ["The team web app opened the wrong spreadsheet — nothing written", more];
 	}
 	return ["Can't reach your sheet — check settings", e.error || ""];
 }

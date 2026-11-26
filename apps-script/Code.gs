@@ -169,8 +169,19 @@ function doPost(e) {
     console.warn('[ReplySync] Request rejected: %s', NOT_AS_YOU);
     return out_({ ok: false, error: NOT_AS_YOU });
   }
+  var ss = null;
+  // Every answer says which spreadsheet it opened, so the extension can check it is the one
+  // in its settings (an old Code.gs bound to a spreadsheet would answer from that one).
   var answer = function (obj) {
     obj.account = account;
+    if (ss) {
+      obj.sheetId = ss.getId();
+      try {
+        obj.sheetName = ss.getName();
+      } catch (err) {
+        obj.sheetName = '';
+      }
+    }
     return out_(obj);
   };
   var action = ACTIONS[data.action];
@@ -179,7 +190,6 @@ function doPost(e) {
   var id = String(data.sheet || '').trim();
   if (!SHEET_ID_RE.test(id)) return answer({ ok: false, error: 'no sheet link' });
   if (sheetsPermissionMissing_()) return answer({ ok: false, error: NO_SHEETS_PERMISSION });
-  var ss;
   try {
     ss = SpreadsheetApp.openById(id);
   } catch (err) {
