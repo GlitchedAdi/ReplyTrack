@@ -154,11 +154,26 @@ chrome.runtime.onStartup.addListener(() => {
 	ReplySync.ensureSyncTab("browser startup").catch(e => console.warn("[ReplySync] startup:", e));
 });
 
+// The old "own script" set-up (removed in 2.3): ReplyTrack only talks to the team web app now.
+// Without a secret key nothing of it is needed — the sheet link stays, the old script URL goes.
+// With a secret key it stays until you switch in Settings → Advanced (it's still never used).
+// Runs every time the service worker starts, not only on install/update.
+async function migrateOldSetup() {
+	const old = await chrome.storage.sync.get(S.OLD_SETUP_DEFAULTS);
+	if (!S.OLD_SETUP_KEYS.some(k => old[k] !== S.OLD_SETUP_DEFAULTS[k])) return;
+	if (S.hasOldSetup(old) && String(old.secretKey || "").trim()) {
+		console.warn("[ReplySync] The old own-script set-up is still saved (it has a secret key). It is not used; Settings → Advanced switches it to the team set-up.");
+		return;
+	}
+	await chrome.storage.sync.remove(S.OLD_SETUP_KEYS);
+	console.log("[ReplySync] Moved from the old own-script set-up (%s) to the team web app.", old.scriptUrl || "no script URL");
+}
+migrateOldSetup().catch(e => console.warn("[ReplySync] old set-up:", e));
+
 chrome.runtime.onInstalled.addListener(async details => {
 	try {
 		await ensureAlarms();
-		// Settings of the old "own script" set-up (removed in 2.3).
-		await chrome.storage.sync.remove(["mode", "scriptUrl", "secretKey", "useGoogleLogin"]);
+		await migrateOldSetup();
 		const settings = await Sheet.settings();
 		if (details.reason === "install" && !Sheet.configured(settings)) await openDashboard("settings");
 		else await ReplySync.ensureSyncTab(`extension ${details.reason}`);

@@ -100,6 +100,14 @@ function problemText(r, settings) {
 async function testConnection(settings) {
 	show("msg", "Testing…");
 	const r = (await send({ type: "testConnection", settings })) || { ok: false, error: "no answer" };
+	// The background (which makes every request) must be the same copy as this page. Pages
+	// load the files on disk; the service worker keeps running the old ones until reloaded.
+	if (!r.stopped && r.build !== S.BUILD) {
+		show("msg", `The background part of ReplyTrack is an older copy (${r.build || "before 2.4"}) than this page (${S.BUILD}), so it may still use old settings.\n\nOpen chrome://extensions and click the reload ↻ button on ReplyTrack, then test again.`, "bad");
+		return false;
+	}
+	// Never show an answer that doesn't come from the spreadsheet in the sheet link.
+	if (r.ok && r.sheetId !== S.sheetIdOf(settings.sheetUrl)) Object.assign(r, { ok: false, code: r.sheetId ? "wrongsheet" : "oldscript" });
 	if (!r.ok) {
 		show("msg", problemText(r, settings), "bad");
 		return false;
@@ -160,7 +168,8 @@ async function saveConnection() {
 	$("save").disabled = $("saveBarSave").disabled = true;
 	try {
 		await chrome.storage.sync.set(s);
-		cfg = { ...cfg, ...s }; // the bar goes now; storage.onChanged follows
+		await chrome.storage.sync.remove(S.OLD_SETUP_KEYS); // saving always means the team set-up
+		cfg = { ...cfg, ...s, ...S.OLD_SETUP_DEFAULTS }; // the bar goes now; storage.onChanged follows
 		renderSaveBar();
 		const ok = await testConnection(s);
 		await send({ type: "settingsSaved" });
@@ -249,7 +258,32 @@ onRender(() => {
 			? `ReplyTrack last used <span class="account">${esc(acc)}</span>. Click Connect again only if you change accounts.`
 			: "Once: Google asks you to approve ReplyTrack. Use the account that has your sheet."
 	);
+	renderSetup();
 	renderSaveBar();
+});
+
+// Advanced → "Active setup": where requests go, saved values only. The old "own script"
+// set-up (removed in 2.3) is never used, but while it's still saved it's shown here.
+function renderSetup() {
+	const old = S.hasOldSetup(cfg);
+	const saved = savedConnection();
+	const id = S.sheetIdOf(saved.sheetUrl);
+	const team = saved.teamUrl ? `${esc(saved.teamUrl)} (set here)` : builtInUrl() ? `${esc(builtInUrl())} (built in)` : "not set";
+	const lines = [`<b>Team web app</b> — ${team}`, `Spreadsheet id: ${id ? esc(id) : "no sheet link saved"}`];
+	if (old)
+		lines.unshift(
+			`⚠ <b>Old “own script” set-up still saved</b> — ${esc(cfg.scriptUrl || "(no script URL)")}${cfg.secretKey ? " (with a secret key)" : ""}. ReplyTrack 2.3+ doesn't use it, but an older copy of the extension would. Click “Switch to the team setup” to remove it.`
+		);
+	setHTML($("setupLine"), lines.join("<br />"));
+	$("switchToTeam").classList.toggle("hidden", !old);
+	if (old) $("advanced").open = true;
+}
+$("switchToTeam").addEventListener("click", async () => {
+	await chrome.storage.sync.remove(S.OLD_SETUP_KEYS);
+	cfg = { ...cfg, ...S.OLD_SETUP_DEFAULTS };
+	renderSetup();
+	await send({ type: "settingsSaved" });
+	show("msg", "Switched to the team setup: your sheet link and the team web app URL. Click Test connection to check.", "ok");
 });
 
 // ---------------------------------------------------------------------------

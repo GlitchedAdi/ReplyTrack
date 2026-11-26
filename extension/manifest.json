@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "ReplyTrack",
-	"version": "2.3.0",
+	"version": "2.4.0",
 	"description": "Sends LinkedIn connection requests from your Google Sheet, copies replies back into it, sends your manager's replies when you say so — and scrapes Sales Navigator leads and contact info.",
 	"permissions": ["storage", "unlimitedStorage", "scripting", "webRequest", "alarms", "notifications", "idle", "cookies", "activeTab"],
 	"host_permissions": [

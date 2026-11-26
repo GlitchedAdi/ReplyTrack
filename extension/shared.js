@@ -78,6 +78,14 @@
 	// Advanced) and your sheet's link. Requests carry your Google login.
 	// -------------------------------------------------------------------------
 	const SETTINGS_DEFAULTS = { tabName: "", sheetUrl: "", teamUrl: "" };
+	// This copy of the extension. The background sends it with every Test connection, so a
+	// Settings page newer than the background (the extension wasn't reloaded) is spotted.
+	const BUILD = "2.4.0";
+	// The old "own script" set-up (removed in 2.3; ReplyTrack never uses it). Still in
+	// storage.sync for people who used it — the background moves them to the team set-up.
+	const OLD_SETUP_DEFAULTS = { mode: "", scriptUrl: "", secretKey: "", useGoogleLogin: false };
+	const OLD_SETUP_KEYS = Object.keys(OLD_SETUP_DEFAULTS);
+	const hasOldSetup = c => !!(c && (c.mode === "own" || String(c.scriptUrl || "").trim()));
 	const DEFAULT_TAB = "MY LEADS";
 	// https://script.google.com/macros/s/<id>/exec  or  …/a/macros/<domain>/s/<id>/exec
 	const WEB_APP_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]+\/exec$/;
@@ -247,6 +255,10 @@
 		missingColumns,
 		missingText,
 		SETTINGS_DEFAULTS,
+		BUILD,
+		OLD_SETUP_DEFAULTS,
+		OLD_SETUP_KEYS,
+		hasOldSetup,
 		DEFAULT_TAB,
 		WEB_APP_RE,
 		teamConfig,

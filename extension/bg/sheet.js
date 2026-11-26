@@ -144,6 +144,7 @@ const Sheet = (() => {
 		if (!configured(s)) return { ok: false, error: "Paste your sheet link and enter the tab name first." };
 		const r = await post({ action: "ping" }, s);
 		if (r.ok) await noteAccount(r.account);
+		r.build = S.BUILD; // which copy of the extension answered (Settings compares it with its own)
 		return r;
 	}
 

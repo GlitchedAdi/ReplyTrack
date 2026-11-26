@@ -89,7 +89,8 @@ const KEYS = [
 	"acStatus",
 	"acWeek",
 ];
-const CFG_DEFAULTS = { ...S.SETTINGS_DEFAULTS }; // the connection settings (storage.sync)
+// The connection settings (storage.sync), and the old own-script set-up while it's still there.
+const CFG_DEFAULTS = { ...S.SETTINGS_DEFAULTS, ...S.OLD_SETUP_DEFAULTS };
 let st = {};
 let cfg = { ...CFG_DEFAULTS };
 let counts = { today: 0, limit: 0 };
