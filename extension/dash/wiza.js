@@ -1,12 +1,10 @@
 // Load the Wiza queue from the connected spreadsheet's SCRAP tab.
 (() => {
 	const BATCH_SIZE = 2000; // WizaTool's default upload limit
-	const STORAGE_KEY = "wizaPort";
 	const batch = $("wizaBatch");
 	const download = $("wizaExport");
 	const refreshButton = $("wizaRefresh");
 	const status = $("wizaStatus");
-	const port = $("wizaPort");
 	const connect = $("wizaConnect");
 	const credentials = $("wizaOpenForm");
 	const email = $("wizaEmail");
@@ -96,7 +94,7 @@
 		renderBatches();
 		try {
 			const connection = await send({
-				type: "WIZA_CONNECT", port: pending.port,
+				type: "WIZA_CONNECT",
 				...(signingIn ? { email: email.value, password: password.value } : {})
 			});
 			credentials.hidden = !connection.needsLogin;
@@ -118,8 +116,7 @@
 	}
 
 	download.addEventListener("click", async () => {
-		if (loading || job.id || submitting || !port.reportValidity()) return;
-		const lookupPort = port.valueAsNumber;
+		if (loading || job.id || submitting) return;
 		pending = null;
 		credentials.hidden = true;
 		job = {};
@@ -128,12 +125,14 @@
 		renderBatches();
 		try {
 			const allowed = await chrome.permissions.request({ origins: ["http://127.0.0.1/*"] });
-			if (!allowed) throw new Error("Allow local WizaTool access to run the lookup.");
+			if (!allowed) throw new Error("Allow ReplyTrack to connect to WizaTool on this computer to run the lookup.");
 			if (!(await refresh()) || job.id) return;
 			const index = Number(batch.value);
 			const rows = profiles.slice(index * BATCH_SIZE, (index + 1) * BATCH_SIZE);
 			if (!rows.length) return;
-			pending = { port: lookupPort, profiles: rows.map(({ url }) => ({ url })), sheetId };
+			job = { status: "Looking for WizaTool on this computer…" };
+			renderBatches();
+			pending = { profiles: rows.map(({ url }) => ({ url })), sheetId };
 			await runLookup();
 		} catch (error) {
 			job = { ...job, status: error.message };
@@ -143,10 +142,9 @@
 		}
 	});
 
-	chrome.storage.local.get([STORAGE_KEY, "rtWizaJob"]).then(saved => {
+	chrome.storage.local.get("rtWizaJob").then(saved => {
 		job = saved.rtWizaJob || {};
 		renderBatches();
-		if (saved[STORAGE_KEY] && port.value === port.defaultValue) port.value = saved[STORAGE_KEY];
 	}).catch(() => {});
 	credentials.addEventListener("submit", event => {
 		event.preventDefault();

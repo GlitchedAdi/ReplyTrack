@@ -130,7 +130,7 @@ Keep the pinned **LinkedIn Messaging** tab open, and keep the computer on during
 ## Look up scraped leads with WizaTool
 
 1. Start [WizaTool](https://github.com/piyushkunder11/extracter) using its launcher and complete its LinkedIn and Wiza sign-in setup.
-2. In **SCRAP**, paste LinkedIn profile links under a **LinkedIn Profile** header in row 1, or use the links already populated by the Scraper. In the **Wiza** tab, choose a batch if shown and click **Run Wiza lookup**. ReplyTrack reads the current SCRAP links as part of starting the job. Allow local access and sign in there if prompted. If WizaTool uses a port other than **3000**, set it under **Local worker settings**.
+2. In **SCRAP**, paste LinkedIn profile links under a **LinkedIn Profile** header in row 1, or use the links already populated by the Scraper. In the **Wiza** tab, choose a batch if shown and click **Run Wiza lookup**. ReplyTrack reads the current SCRAP links as part of starting the job. Allow local access and sign in there if prompted. ReplyTrack finds WizaTool on this computer by itself (ports 3000–3029, where its launcher starts it), so there is no port to set.
 3. Keep the local worker running. The Wiza tab shows how many profiles are eligible, checked, and have contact details. ReplyTrack writes the results to the matching profiles in **SCRAP** after the lookup.
 
 SCRAP has separate **Work Email**, **Personal Email**, **Phone Number 1**, and **Phone Number 2** columns. Additional phone numbers remain in the combined `phone` column. ReplyTrack supports up to 2,000 profiles per Wiza job with WizaTool's default settings.

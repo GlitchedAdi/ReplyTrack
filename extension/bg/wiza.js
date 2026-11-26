@@ -3,9 +3,46 @@ const Wiza = (() => {
 	const stateKey = "rtWizaJob";
 	let busy = false;
 
+	// WizaTool's launcher takes port 3000, or the next free one up to 3029 when something
+	// else (a dev server, say) already has 3000. ReplyTrack finds it there by itself.
+	const PORTS = Array.from({ length: 30 }, (_, i) => 3000 + i);
+	const PORT_KEY = "wizaPort"; // the port it was last found on (tried first)
+	const NOT_RUNNING = "WizaTool isn't running. Start it with its launcher (Start (Windows).bat), wait until its page opens, then click Run Wiza lookup again.";
+
+	async function getJson(url, credentials) {
+		try {
+			const response = await fetch(url, { credentials, redirect: "error", signal: AbortSignal.timeout(2000) });
+			if (!/application\/json/i.test(response.headers.get("content-type") || "")) return null;
+			return { status: response.status, data: await response.json() };
+		} catch {
+			return null;
+		}
+	}
+
+	// Is WizaTool on this port? Its /api/health says { ok, version }, and /api/auth/me answers
+	// with the account (or "signin_required") — other apps on these ports don't.
+	async function isWizaTool(port) {
+		const base = "http://127.0.0.1:" + port;
+		const health = await getJson(base + "/api/health", "omit");
+		if (!health || health.data?.ok !== true || typeof health.data.version !== "string") return false;
+		const me = await getJson(base + "/api/auth/me", "include");
+		return !!me && me.data && typeof me.data === "object" && ("user" in me.data || /^(signin_required|password_change_required)$/.test(me.data.code || ""));
+	}
+
+	// → WizaTool's port, or throws NOT_RUNNING.
+	async function findPort() {
+		if (!(await chrome.permissions.contains({ origins }))) throw new Error("Allow ReplyTrack to connect to WizaTool on this computer first.");
+		const { [PORT_KEY]: last } = await chrome.storage.local.get(PORT_KEY);
+		if (Number.isInteger(last) && (await isWizaTool(last))) return last;
+		const found = await Promise.all(PORTS.map(async port => ((await isWizaTool(port)) ? port : 0)));
+		const port = found.find(Boolean);
+		if (!port) throw new Error(NOT_RUNNING);
+		await chrome.storage.local.set({ [PORT_KEY]: port });
+		return port;
+	}
+
 	async function call(port, path, body) {
-		if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Enter a valid WizaTool port.");
-		if (!(await chrome.permissions.contains({ origins }))) throw new Error("Allow ReplyTrack to connect to local WizaTool first.");
+		if (!(await chrome.permissions.contains({ origins }))) throw new Error("Allow ReplyTrack to connect to WizaTool on this computer first.");
 		let response;
 		try {
 			response = await fetch("http://127.0.0.1:" + port + path, {
@@ -17,10 +54,19 @@ const Wiza = (() => {
 				signal: AbortSignal.timeout(15000)
 			});
 		} catch {
-			throw new Error("Could not reach WizaTool. Start its local worker and check the port.");
+			const error = new Error(NOT_RUNNING);
+			error.lost = true;
+			throw error;
 		}
-		const data = await response.json().catch(() => null);
-		if (!response.ok || !data) {
+		// WizaTool always answers its API in JSON: anything else means it isn't on this port (any more).
+		const isJson = /application\/json/i.test(response.headers.get("content-type") || "");
+		const data = isJson ? await response.json().catch(() => null) : null;
+		if (!data) {
+			const error = new Error(NOT_RUNNING);
+			error.lost = true;
+			throw error;
+		}
+		if (!response.ok) {
 			const error = new Error(data?.error || "WizaTool request failed (" + response.status + ").");
 			error.status = response.status;
 			throw error;
@@ -28,12 +74,12 @@ const Wiza = (() => {
 		return data;
 	}
 
-	async function connect({ port, email, password }) {
+	async function connect({ email, password }) {
 		try {
+			const port = await findPort();
 			if (email && password) await call(port, "/api/auth/login", { email, password });
 			const { user } = await call(port, "/api/auth/me");
 			if (!user) throw new Error("The local service did not return a WizaTool account.");
-			await chrome.storage.local.set({ wizaPort: port });
 			return { ok: true, email: user.email };
 		} catch (error) {
 			return { ok: false, needsLogin: error.status === 401, error: error.message };
@@ -52,7 +98,7 @@ const Wiza = (() => {
 		return { ok: true, sheetId: sheet.sheetId, profiles: result.urls.map((url, i) => ({ url, contact: saved[keys[i]] || null })) };
 	}
 
-	async function start({ port, profiles, sheetId }) {
+	async function start({ profiles, sheetId }) {
 		if (busy) throw new Error("A Wiza request is already in progress.");
 		busy = true;
 		try {
@@ -60,7 +106,8 @@ const Wiza = (() => {
 			const sheet = await Sheet.settings();
 			if (!Sheet.configured(sheet)) throw new Error("Connect your sheet in ReplyTrack Settings first.");
 			if (sheet.sheetId !== sheetId) throw new Error("The connected spreadsheet changed. Refresh the Wiza profile list.");
-			if (!Number.isInteger(port) || port < 1 || port > 65535 || !profiles?.length || profiles.length > 2000) throw new Error("Invalid Wiza lookup batch.");
+			if (!profiles?.length || profiles.length > 2000) throw new Error("Invalid Wiza lookup batch.");
+			const port = await findPort();
 			const state = await getLocal(stateKey, {});
 			if (state.id) throw new Error("A Wiza lookup is already queued.");
 			const urls = profiles.map(p => p.url);
@@ -88,7 +135,17 @@ const Wiza = (() => {
 			const state = await getLocal(stateKey, {});
 			if (!state.id) return;
 			try {
-				const { job, rows } = await call(state.port, "/api/jobs/" + state.id);
+				let response;
+				try {
+					response = await call(state.port, "/api/jobs/" + state.id);
+				} catch (error) {
+					// WizaTool restarted on another port: find it again (the job is kept in its database).
+					if (!error.lost) throw error;
+					state.port = await findPort();
+					await chrome.storage.local.set({ [stateKey]: state });
+					response = await call(state.port, "/api/jobs/" + state.id);
+				}
+				const { job, rows } = response;
 				if (!["done", "cancelled"].includes(job.status)) {
 					const completed = rows.filter(row => !["pending", "in_progress"].includes(row.status)).length;
 					const status = "Wiza lookup " + job.status + " · " + completed + " of " + rows.length + " checked.";
